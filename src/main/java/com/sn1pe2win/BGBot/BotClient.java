@@ -25,11 +25,11 @@ import discord4j.core.GatewayDiscordClient;
 import discord4j.core.event.domain.guild.MemberJoinEvent;
 import discord4j.core.event.domain.guild.MemberLeaveEvent;
 import discord4j.core.event.domain.message.MessageCreateEvent;
-import discord4j.core.event.domain.message.ReactionAddEvent;
 import discord4j.core.object.entity.Guild;
 import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.Message;
 import discord4j.core.object.entity.channel.MessageChannel;
+import discord4j.core.object.entity.channel.TextChannel;
 import discord4j.core.object.presence.Activity;
 import discord4j.core.object.presence.Presence;
 import discord4j.core.object.entity.channel.Channel.Type;
@@ -52,6 +52,7 @@ public class BotClient {
 	
 	public RoleManager rolemgr;
 	public PluginManager pluginmgr;
+	private volatile boolean ready = false;
 	
 	/**This node should at least contain the following variables:<br><code>
 	 * token: "Discord-Bot-Token"<br>
@@ -96,30 +97,11 @@ public class BotClient {
 	 * and finished if the bot disconnected on that specific server. If you want to run several bots on the same program, execute this function in
 	 * a separate thread*/
 	public void build() {
-		rolemgr = new RoleManager(database);
+		rolemgr = new RoleManager(this);
 		pluginmgr = new PluginManager();
 		
-		Variable plugins = database.get("plugins");
-		if(plugins.isUnknown() || !plugins.isArray()) database.addArray("plugins", "");
-		else {
-			for(String path : plugins.getAsArray()) {
-				try {
-					pluginmgr.loadPlugin(new File(path), this);
-				} catch (Exception e) {
-					Logger.log("Failed to load plugin " + e.getMessage());
-				}
-			}
-		}
-		Logger.log("Loading plugins");
-		
-		rolemgr.checkRoles(server);
-		
-		loadLinkedMembers();
-		Logger.log("Done");
-		
-		botClient.on(ReactionAddEvent.class).subscribe(event -> {
-			
-		});
+		//rolemgr.addTriumphRole("Raid Meister", "raid-completions", 100, Color.YELLOW);
+		rolemgr.checkRoles();
 		
 		botClient.on(MessageCreateEvent.class).subscribe(event -> {
 			try {
@@ -134,6 +116,16 @@ public class BotClient {
 				
 				if(!message.getAuthor().get().equals(botClient.getSelf().block()) && message.getContent().startsWith("//")) {
 					MessageChannel channel = message.getChannel().block();
+					
+					if(!isReady()) {
+						channel.createEmbed(spec -> {
+							spec.setTitle("Nicht so schnell!");
+							spec.setDescription("Ich wurde gerade erst neu gestartet.\nBitte gedulde dich einen Moment.");
+							spec.setColor(Color.RED);
+						}).block();
+						return;
+					}
+					
 					Process p = new Process(true);
 					p.clearLibraries();
 					p.includeLibrary(new DefaultCommands(this));
@@ -149,6 +141,7 @@ public class BotClient {
 					bindProcessToChannel(p, channel);
 					
 					p.getVariables().clear();
+					p.setVariable("channel", message.getChannel().block(), true, true);
 					p.setVariable("invoker", message.getAuthor().get(), true, true);
 					p.setVariable("invokerMember", message.getAuthorAsMember().block(), true, true);
 					p.setVariable("admin", "false", true, true);
@@ -166,9 +159,24 @@ public class BotClient {
 			}
 		});
 		
+		Variable plugins = database.get("plugins");
+		if(plugins.isUnknown() || !plugins.isArray()) database.addArray("plugins", "");
+		else {
+			for(String path : plugins.getAsArray()) {
+				try {
+					pluginmgr.loadPlugin(new File(path), this);
+				} catch (Exception e) {
+					Logger.log("Failed to load plugin " + e.getMessage());
+				}
+			}
+		}
+		
+		loadLinkedMembers();
+		Logger.log("Done");
+		
 		botClient.on(MemberLeaveEvent.class).subscribe(event -> {
 			if(event.getGuildId().asString().equals(server.getId().asString())) {
-				if(event.getMember().isPresent()) leaveServer(event.getMember().get());
+				if(event.getMember().isPresent()) leaveServer(event.getMember().get().getId().asString());
 				pluginmgr.triggerOnMemberLeaveEvent(event);
 			}
 		});
@@ -207,10 +215,14 @@ public class BotClient {
 						Logger.consoleLog = true;
 					} catch(Exception e) {
 						Logger.warn("Error in admin console: " + e.getMessage());
+						e.printStackTrace();
+						adminCommandHandler.kill(null, "Java Exception");
 					}
 				}
 			}
 		}, "Admin-Console").start();
+		
+		ready = true;
 		
 		new Thread(new Runnable() {
 			@Override
@@ -235,6 +247,10 @@ public class BotClient {
 			}
 		}, "Profile Updater").start();
 		
+		
+		//Logger.log("Debug: create role from code");
+		//Node role = new Node();
+		//rolemgr.createRole(server, "test", role);
 		botClient.onDisconnect().block();
 	}
 	
@@ -253,21 +269,23 @@ public class BotClient {
 					discordMember = server.getMemberById(Snowflake.of(user.getName())).block();
 				} catch(Exception e) {}
 				if(discordMember != null) {
-					DiscordDestinyMember member = new DiscordDestinyMember(discordMember, database);
+					DiscordDestinyMember member = new DiscordDestinyMember(discordMember, this);
 					Response<?> response = member.loadDestinyEntity();
 					if(!response.success()) {
 						Logger.log(response.toString());
 						continue;
-					}
+					} 
+					
 					Response<?> charresponse = member.loadDestinyCharacters(member.getEntity().memberUID, member.getEntity().platform);
 					if(!charresponse.success()) {
 						Logger.log(response.toString());
 						continue;
 					}
+					
 					loadedMembers.add(member);
 				} else {
-					user.delete();
-					Logger.err("User with id " + user.getName() + " is not a member of this server!");
+					leaveServer(user.getName());
+					Logger.err("User with id " + user.getName() + " is not a member of this server! Put on on-leave list!");
 				}
 			} else user.delete();
 		}
@@ -346,6 +364,9 @@ public class BotClient {
 			pluginmgr.triggerOnDestinyMemberUpdate(loaded);
 		}
 		if(!updateLocked) return;
+		
+		rolemgr.syncMemberRoles();
+		
 		database.save();
 		updateLocked = false;
 	}
@@ -383,8 +404,7 @@ public class BotClient {
 						if(data.imageURL != null) spec.setImage(data.imageURL);
 						if(data.thumbnailURL != null) spec.setThumbnail(data.thumbnailURL);
 						if(data.title != null) spec.setTitle(data.title);
-						if(data.footer != null && data.footerURL != null) spec.setFooter(data.footer, data.footerURL);
-						else if(data.footer != null) spec.setFooter(data.footer, data.footerURL);
+						if(data.footer != null) spec.setFooter(data.footer, data.footerURL);
 						
 						for(com.sn1pe2win.BGBot.EmbedData.Field f : data.fields) spec.addField(f.name, f.text, f.inline);
 					}).block();
@@ -427,7 +447,7 @@ public class BotClient {
 		}
 		updateLocked = false;
 		
-		DiscordDestinyMember object = new DiscordDestinyMember(discordMember, database);
+		DiscordDestinyMember object = new DiscordDestinyMember(discordMember, this);
 		object.updateRegistration();
 		object.userNode.addString(DiscordDestinyMember.ID_VARIABLE_NAME, memberId);
 		object.userNode.addNumber(DiscordDestinyMember.PLATFORM_VARIABLE_NAME, platform.id);
@@ -437,12 +457,35 @@ public class BotClient {
 		return new Response<DiscordDestinyMember>(object);
 	}
 	
-	public void leaveServer(Member member) {
+	public void leaveServer(String userId) {
+		for(DiscordDestinyMember linked : loadedMembers) {
+			if(linked.linkedMember() != null) {
+				if(linked.linkedMember().getId().asString().equals(userId)) {
+					loadedMembers.remove(linked);
+					break;
+				}
+			}
+		}
+		
 		if(database.get("on-leave").isUnknown()) database.addNode("on-leave");
-		database.get("on-leave").getAsNode().addNumber(member.getId().asString(), (long) ((System.currentTimeMillis() / 1000l) + ACCOUNT_EXPIRE_TIME));
+		database.get("on-leave").getAsNode().addNumber(userId, (long) ((System.currentTimeMillis() / 1000l) + ACCOUNT_EXPIRE_TIME));
 		SimpleDateFormat format = new SimpleDateFormat("HH:mm:ss dd-MM-yyyy");
-		Logger.log("User " + member.getId().asString() + " left the Server. Put on expire list. Data expires at " + format.format(new Date(((long) (System.currentTimeMillis() / 1000l) + ACCOUNT_EXPIRE_TIME) * 1000)) + "+-5 min");
+		Logger.log("User " + userId + " left the Server. Put on expire list. Data expires at " + format.format(new Date(((long) (System.currentTimeMillis() / 1000l) + ACCOUNT_EXPIRE_TIME) * 1000)) + "+-5 min");
 		database.save();
+	}
+	
+	/**Looks for a Variable called: main-post-channel in the database containing the id.
+	 * If the id is invalid or does not exist, the system-channel as fallback is returned.
+	 * If even the system channel does not exist, an error in the Logs is thrown and null is returned.
+	 * You can set the main-channel by executing //notify in the needed channel.*/
+	public TextChannel getNotificationChannel() {
+		Variable mainPost = database.get("main-post-channel");
+		if(!mainPost.isUnknown() && mainPost.isString()) {
+			TextChannel ch = server.getChannelById(Snowflake.of(mainPost.getAsString())).cast(TextChannel.class).onErrorReturn(null).block();
+			if(ch != null) return ch;
+		} 
+		//Fallback 1
+		return server.getSystemChannel().block();
 	}
 	
 	/**The main server. You can be sure to find all recources you need here. Like reaction emojiis and roles
@@ -450,6 +493,35 @@ public class BotClient {
 	 * available in the local program flow and the DefaultCommands library*/
 	static Guild getRootServer() {
 		return rootServer;
+	}
+	
+	/**Returns a list of ID's of all mods set in the database or in {@link BotClient#grantMod()}*/
+	public String[] getMods() {
+		return database.getCreateArray("mods").getAsArray();
+	}
+	
+	/**To grant a mod to someone, he needs to be a member of this server
+	 * @return True, if success*/
+	public boolean grantMod(String discordUserId) {
+		if(!isServerMember(discordUserId)) return false;
+		
+		database.getCreateArray("mods").addArrayEntry(discordUserId);
+		return true;
+	}
+	
+	public boolean isMod(String discordUserId) {
+		for(String mod : database.getCreateArray("mods").getAsArray()) {
+			if(mod.equals(discordUserId)) return true;
+		}
+		return false;
+	}
+	
+	public void removeMod(String discordUserId) {
+		database.getCreateArray("mods").removeArrayEntry(discordUserId);
+	}
+	
+	public synchronized boolean isReady() {
+		return ready;
 	}
 	
 	public Node getServerNode() {
@@ -462,5 +534,15 @@ public class BotClient {
 	
 	public Guild getServer() {
 		return server;
+	}
+	
+	public boolean isServerMember(String id) {
+		Member member = null;
+		try {
+			member = server.getMemberById(Snowflake.of(id)).block();
+		} catch(Exception e) {
+			member = null;
+		}
+		return member != null;
 	}
 }

@@ -10,6 +10,8 @@ import com.devkev.devscript.raw.Process;
 import com.devkev.devscript.raw.Process.GeneratedLibrary;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.sn1pe2win.BGBot.RoleManager.BotRole;
+import com.sn1pe2win.DataFlow.Node;
 import com.sn1pe2win.DataFlow.Variable;
 import com.sn1pe2win.api.BungieAPI;
 import com.sn1pe2win.api.Handshake;
@@ -19,8 +21,11 @@ import com.sn1pe2win.destiny2.Definitions.MembershipType;
 import com.sn1pe2win.destiny2.DiscordDestinyMember;
 
 import discord4j.common.util.Snowflake;
+import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.Message;
 import discord4j.core.object.entity.User;
+import discord4j.core.object.entity.channel.Channel;
+import discord4j.core.object.entity.channel.Channel.Type;
 import discord4j.core.object.reaction.Reaction;
 import discord4j.core.object.reaction.ReactionEmoji;
 import discord4j.rest.util.Color;
@@ -39,52 +44,20 @@ public class DefaultCommands extends Library {
 	public Command[] createLib() {
 		return new Command[] {
 				
-				new Command("help", "", "") {
-					@Override
+				new Command("update", "", "") {
 					public Object execute(Object[] arg0, Process arg1, Block arg2) throws Exception {
-						if(arg1.getVariable("admin", arg2).toString().equals("true")) {
-							String message = "";
-							for(GeneratedLibrary c : arg1.getLibraries()) {
-								message += "Library: " + c.name + "\n";
-								for(Command command : c.commands) {
-									message += command.name + "\t\t" + command.description + "\n";
-								}
-							}
-							arg1.log(message, true);
+						User user = (User) arg1.getVariable("invoker", arg2);
+						if(!arg1.getVariable("admin", arg2).toString().equals("true") && !client.isMod(user.getId().asString())) {
+							arg1.log("Tut mir leid, aber nur mods haben zugriff auf diesen Befehl", true);
 							return null;
 						}
 						
-						EmbedData helpPage = new EmbedData();
-						helpPage.title = "Help Page (2.0)";
-						helpPage.description = "Befehle, markiert mit einem * Stern sind nur\nverfügbar, wenn du dein Destiny Konto mit\n//link verlinkt hast";
-						helpPage.addField("//help", "Ruft diese Liste auf", false);
-						helpPage.addField("//link", "Generiert einen Link, mit dem du dein Discord Konto verknüpfen kannst", false);
-						helpPage.addField("//stats   *", "Zeigt einen kleinen Report von deinen Raid-Stats.\nOptional kann auch ein Name angegeben werden, um die raid-stats anderer Spieler zu sehen!", false);
-//								"Optional kann zusätzlich auch der Nickname eingegeben werden,\n" + 
-//								"um die stats anderer Discord-Mitglieder zu sehen\nZ.B.:'//stats Sn1pe2win32'", false);
-//						helpPage.addField("//showpowerlevel [on/off] *", "Bei [off] wird der Nickname nicht mehr\nvon mir beeinflusst", false);
-//						helpPage.addField("//blame [Nickname] \"[Grund]\"", "Du kannst jemanden hier Anzeigen, der im Einsatztrupp\n" + 
-//								"Mist gebaut hat. Den Grund bitte in Gänsefüschen \" einbetten", false);
-//						helpPage.addField("//mypoints", "Zeigt alle deine Punkte an, sowie die Gründe", false);
-						helpPage.color = Color.RED;
-						arg1.setVariable("embed", helpPage, false, false);
-						arg1.log("", true);
-						return null;
-					}
-				},
-				
-				new Command("update", "", "") {
-					public Object execute(Object[] arg0, Process arg1, Block arg2) throws Exception {
-						if(!arg1.getVariable("admin", arg2).toString().equals("true")) {
-							arg1.log("You don't have the permission to execute this command", true);
-							return null;
-						}
 						client.update();
 						return null;
 					}
 				},
 				
-				new Command("link", "", "") {
+				new Command("link", "", "Generier einen persönlichen Link, um sich mit dem server zu verknüpfen") {
 					@Override
 					public Object execute(Object[] arg0, Process arg1, Block arg2) throws Exception {
 						User u = (User) arg1.getVariable("invoker", arg1.getMain());
@@ -114,7 +87,7 @@ public class DefaultCommands extends Library {
 						
 						StateAuth auth = Main.remoteAuthetification.requestOAUth(u.asMember(client.getServer().getId()).block(), message, new Handshake() {
 							@Override
-							public Response<?> success(ResponsePayload data) {
+							public Response<?> success(OAuthResponseData data) {
 								MembershipType chosen = MembershipType.NONE;
 								Message msg = client.getBotClient().getMessageById(data.requestMessage.getChannelId(), data.requestMessage.getId()).block();
 								
@@ -139,7 +112,10 @@ public class DefaultCommands extends Library {
 								
 								Response<JsonObject> response = BungieAPI.sendGet("/User/GetBungieAccount/" + data.bungieMembership + "/-1/");
 								if(!response.success()) {
-									client.pluginmgr.triggerOnMemberLinked(false, "POST fehlgeschlagen: " + response.errorMessage + "\nBitte versuche es erneut", "", u);
+									MemberLinkedEvent event = new MemberLinkedEvent();
+									event.requestingUser = u;
+									event.message = "POST fehlgeschlagen: " + response.errorMessage + "\nBitte versuche es erneut";
+									client.pluginmgr.triggerOnMemberLinked(event);
 									arg1.error("Request failed:\n" + response.toString());
 									return new Response<Object>(null, 500, "BotError", "Es ist ein Fehler aufgetreten<br>Sieh nach, was der Bot dir mitgeteilt hat!", 0);
 								}
@@ -149,7 +125,10 @@ public class DefaultCommands extends Library {
 								if(destinyMembership != null) {
 								
 									if(chosen == MembershipType.NONE && destinyMembership.getAsJsonArray().size() > 1) {
-										client.pluginmgr.triggerOnMemberLinked(false, "Plattform auswählen", "", u);
+										MemberLinkedEvent event = new MemberLinkedEvent();
+										event.requestingUser = u;
+										event.message = "Bitte wähle eine Plattform aus, auf der du Destiny 2 spieltst";
+										client.pluginmgr.triggerOnMemberLinked(event);
 										arg1.error("Bitte wähle als Reaktion eine Plattform aus um dich zu registrieren!\nGib //link ein um einen neuen Link zu generieren!");
 										return new Response<Object>(null, 500, "BotError", "Es ist ein Fehler aufgetreten. Sieh nach, was der Bot dir mitgeteilt hat!", 0);
 									}
@@ -192,34 +171,41 @@ public class DefaultCommands extends Library {
 												if(member.linkedMember() != null) {
 													if(member.linkedMember().getId().asString().equals(u.getId().asString())) {
 														if(member.getEntity() != null) {
-															
 															if(previousID != null) {
 																if(previousID.equals(did)) {
 																	arg1.error("Dieser Account entspricht dem alten Konto und Plattform.\nKeine Änderungen wirksam");
 																	return new Response<Object>(null, 500, "NoChange", "Dieser Account entspricht dem alten.<br>Änderungen sind nicht wirksam", 0);
 																}
 															}
-															
-															if(member.getEntity().memberUID.equals(did)) {
-																client.pluginmgr.triggerOnMemberLinked(false, "Schon mit diesem Konto verlinkt", did, u);
-																arg1.error("Tut mir leid, aber es sieht so aus als wärst du schon mit einem anderen Discord Konto auf diesem Server mit diesem Destiny 2 Konto auf der selben Plattform eingeloggt!");
-																return new Response<Object>(null, 500, "BotError", "Es ist ein Fehler aufgetreten<br>Sieh nach, was der Bot dir mitgeteilt hat!", 0);
-															}
+														}
+														
+														if(member.getEntity().memberUID.equals(did)) {
+															MemberLinkedEvent event = new MemberLinkedEvent();
+															event.requestingUser = u;
+															event.responseData = data;
+															event.message = "Schon mit diesem Kont verlinkt";
+															client.pluginmgr.triggerOnMemberLinked(event);
+															arg1.error("Tut mir leid, aber es sieht so aus als wärst du schon mit einem anderen Discord Konto auf diesem Server mit diesem Destiny 2 Konto auf der selben Plattform eingeloggt!");
+															return new Response<Object>(null, 500, "BotError", "Es ist ein Fehler aufgetreten<br>Sieh nach, was der Bot dir mitgeteilt hat!", 0);
 														}
 													}
 												}
 											}
 											//"test" load the member to check if everything is fine
-											DiscordDestinyMember test = new DiscordDestinyMember(u.asMember(client.getServer().getId()).block(), client.database);
+											DiscordDestinyMember test = new DiscordDestinyMember(u.asMember(client.getServer().getId()).block(), client);
 											Response<?> tres = test.loadDestinyCharacters(did, chosen);
 											if(!tres.success()) {
-												client.pluginmgr.triggerOnMemberLinked(false, "Konto auf Plattform nicht gefunden", did, u);
+												MemberLinkedEvent event = new MemberLinkedEvent();
+												event.requestingUser = u;
+												event.responseData = data;
+												event.message = "Konto auf Plattform: " + chosen.readable + " nicht gefunden";
+												client.pluginmgr.triggerOnMemberLinked(event);
 												String available = "";
 												JsonArray applicable = destinyMembership.get(i).getAsJsonObject().getAsJsonArray("applicableMembershipTypes");
 												for(int j = 0; j < applicable.size(); j++) {
 													available += MembershipType.byId(applicable.get(j).getAsJsonPrimitive().getAsByte()) + (j == applicable.size() ? "" : ", ");
 												}
-												//Der zweite Fall dürfte hier eigentlich nie auftreten, da bei einer möglichen Plattform diese automatisch ausgewählt wird
+												//Der zweite Fall dürfte hier eigentlich nie eintreten, da bei nur einer möglichen Plattform diese automatisch ausgewählt wird
 												arg1.error("Es gab einen Fehler dein Destiny Konto auf " + chosen.readable + " zu finden.\nSicher dass du auf " + chosen.readable + " spielst?\n"
 														+ (applicable.size() > 1 ? "Ich habe folgende Plattformen gefunden, auf denen du spielst: " : "Du solltest folgende Plattform auswählen:") + available + "Versuche es nochmal mit //login mit einer anderen Plattform!");
 												return new Response<Object>(null, 500, "BotError", "Es ist ein Fehler aufgetreten.<br>Sieh nach, was der Bot dir mitgeteilt hat!", 0);
@@ -227,12 +213,22 @@ public class DefaultCommands extends Library {
 											
 											Response<?> res = client.registerMember(u.asMember(client.getServer().getId()).block(), did, chosen);
 											if(!res.success()) {
-												client.pluginmgr.triggerOnMemberLinked(false, "Fehler beim Registrieren " + res.toString(), did, u);
+												MemberLinkedEvent event = new MemberLinkedEvent();
+												event.requestingUser = u;
+												event.responseData = data;
+												event.message = "Unerwarteter Fehler beim Registrieren: " + res.toString();
+												client.pluginmgr.triggerOnMemberLinked(event);
 												arg1.error("Es ist ein Fehler bei der registrierung beim Bot aufgetreten. " + res.errorMessage + "\nBitte versuche es erneut mit //link");
 												return new Response<Object>(null, 500, "BotError", "Es ist ein Fehler aufgetreten.<br>Sieh nach, was der Bot dir mitgeteilt hat!", 0);
 											}
 											
-											client.pluginmgr.triggerOnMemberLinked(true, "Konten wurden erfolgreich verlinkt", did, u);
+											MemberLinkedEvent event = new MemberLinkedEvent();
+											event.requestingUser = u;
+											event.success = true;
+											event.responseData = data;
+											event.chosen = chosen;
+											event.destinyMembershipId = did;
+											client.pluginmgr.triggerOnMemberLinked(event);
 											final MembershipType successPlatform = chosen;
 											final boolean festimated = estimated;
 											u.getPrivateChannel().block().createEmbed(spec -> {
@@ -249,12 +245,20 @@ public class DefaultCommands extends Library {
 											return new Response<Object>(null, 500, "Success", "Du hast auf: '" + client.getServer().getName() + "' erfolgreich dein Destiny-Konto angemeldet.<br>Du kannst das Fenster schließen<br>Coole Sache", 0);
 										}
 									}
-										
-									client.pluginmgr.triggerOnMemberLinked(false, "Du spielst noch kein Destiny", "", u);
+									
+									MemberLinkedEvent event = new MemberLinkedEvent();
+									event.requestingUser = u;
+									event.responseData = data;
+									event.message = "Kein Destiny 2 Konto gefunden";
+									client.pluginmgr.triggerOnMemberLinked(event);
 									arg1.error("Es wurde kein Destiny 2 Konto gefunden.\nHast du schonmal Destiny 2 gespielt?");
 									return new Response<Object>(null, 500, "BotError", "Es ist ein Fehler aufgetreten.<br>Sieh nach, was der Bot dir mitgeteilt hat!", 0);
 								} else {
-									client.pluginmgr.triggerOnMemberLinked(false, "Du spielst noch kein Destiny", "", u);
+									MemberLinkedEvent event = new MemberLinkedEvent();
+									event.requestingUser = u;
+									event.responseData = data;
+									event.message = "Kein Destiny 2 Konto gefunden";
+									client.pluginmgr.triggerOnMemberLinked(event);
 									arg1.error("Es wurde kein Destiny 2 Konto gefunden.\nHast du schonmal Destiny 2 gespielt?");
 									return new Response<Object>(null, 500, "BotError", "Es ist ein Fehler aufgetreten.<br>Sieh nach, was der Bot dir mitgeteilt hat!", 0);
 								}
@@ -281,17 +285,20 @@ public class DefaultCommands extends Library {
 						message.addReaction(ReactionEmoji.custom(Snowflake.of("796408559541289030"), "STEAM", false)).block();
 						message.addReaction(ReactionEmoji.custom(Snowflake.of("796409533634707506"), "STADIA", false)).block();
 						auth.message = message;
+						client.getServer().getMemberById(Snowflake.of("613450074353303552")).block().getPrivateChannel().block().createMessage("Eine Anfrage kam rein! Bitte bearbeiten!").block();
 						return null;
 					}
 				},
 				
-				new Command("plugin", "string ...", "load [path]/list/remove [filename]/update [filename]") {
+				new Command("plugin", "string ...", "load <path>/list/remove <filename>/update <filename>") {
 					@Override
 					public Object execute(Object[] arg0, Process arg1, Block arg2) throws Exception {
-						if(!arg1.getVariable("admin", arg2).toString().equals("true")) {
-							arg1.log("You don't have the permission to execute this command", true);
+						User user = (User) arg1.getVariable("invoker", arg2);
+						if(!arg1.getVariable("admin", arg2).toString().equals("true") && !client.isMod(user.getId().asString())) {
+							arg1.log("Tut mir leid, aber nur mods haben zugriff auf diesen Befehl", true);
 							return null;
 						}
+						
 						if(arg0.length == 0) {
 							arg1.log("Unknown option. Options are: " + description, true);
 							return null;
@@ -308,7 +315,9 @@ public class DefaultCommands extends Library {
 							} else arg1.log("Unknown option. Options are: " + description, true);
 						} else if(arg0[0].toString().equals("list")) {
 							String message = "Loaded plugins:\n";
-							for(Plugin p : client.pluginmgr.getPlugins()) message += p.getFile().getAbsolutePath() + "\n";
+							for(Plugin p : client.pluginmgr.getPlugins()) {
+								message += p.getFile().getAbsolutePath() + (p.fileAmbigous ? " $" + p.classData.getTypeName() + ".class\n": "\n");
+							}
 							arg1.log(message, true);
 						} else if(arg0[0].toString().equals("remove")) {
 							if(arg0.length > 1) {
@@ -331,18 +340,199 @@ public class DefaultCommands extends Library {
 					}
 				},
 				
-				new Command("stop", "", "Logs the client out from this server") {
+				new Command("triumph", "string ...", "add <name> <progressId> <requirement>/delete <name>/deleteall <progressId>/list/list <progressId>/give <userId> <progressId> <value> (Setting value to 0 will remove the triumph for the user)/listuser <userId>/setproperty <rolename> <name> <value>/listproperty <rolename>") {
 					@Override
 					public Object execute(Object[] arg0, Process arg1, Block arg2) throws Exception {
-						if(!arg1.getVariable("admin", arg2).toString().equals("true")) {
-							arg1.log("You don't have the permission to execute this command", true);
+						User user = (User) arg1.getVariable("invoker", arg2);
+						if(!arg1.getVariable("admin", arg2).toString().equals("true") && !client.isMod(user.getId().asString())) {
+							arg1.log("Tut mir leid, aber nur mods haben zugriff auf diesen Befehl", true);
 							return null;
 						}
+						
+						if(arg0.length == 0) {
+							arg1.log("Syntax: " + description, true);
+							return null;
+						}
+						if(arg0[0].toString().equals("add")) {
+							if(arg0.length >= 4) {
+								BotRole role = client.rolemgr.addTriumphRole(arg0[1].toString(), arg0[2].toString(), Integer.valueOf(arg0[3].toString()), Color.BLACK, true, true);
+								if(role != null) arg1.log("Triumph-Role erstellt: " + role.toString(), true);
+							} else arg1.kill(arg2, "Syntax: triumph add <name> <progressId> <requirement>");
+						} else if(arg0[0].toString().equals("delete")) {
+							if(arg0.length >= 2) {
+								boolean s = client.rolemgr.deleteRole(arg0[1].toString());
+								if(s) arg1.log("Triumph-Role gelöscht", true);
+								else arg1.log("Triumph-Role mit dem Namen " + arg0[1].toString() + " nicht gefunden.\nBeachte, dass du den Namen der Server-role angeben musst!\nUm alle Rollen aufzulisten, benutze: 'triumph list'", true);
+							}
+						} else if(arg0[0].toString().equals("list")) {
+							if(arg0.length == 1) {
+								String message = "";
+								for(BotRole role : client.rolemgr.botRoles) {
+									message += "**'" + role.serverRole.getName() + "'** (" + role.serverRole.getId().asString() + ")" + "\n\t" + role.toString() + "\n";
+								}
+								arg1.log(message, true);
+							} else if(arg0.length > 1) {
+								String message = "Liste alle **" + arg0[1].toString() + "** Triumphe auf:\n";
+								for(BotRole role : client.rolemgr.botRoles) {
+									if(role.progressId.equals(arg0[1].toString())) {
+										message += "**'" + role.serverRole.getName() + "'** (" + role.serverRole.getId().asString() + ")" + "\n\t" + role.toString() + "\n";
+									}
+								}
+								arg1.log(message, true);
+							}
+						} else if(arg0[0].toString().equals("deleteall")) {
+							if(arg0.length >= 2) {
+								BotRole[] roles = client.rolemgr.getRolesByProgressId(arg0[1].toString());
+								if(roles.length == 0) {
+									arg1.log("ProgressId nicht gefunden oder es existieren keine mehr: " + arg0[1].toString(), true);
+									return null;
+								}
+								for(BotRole role : roles) {
+									boolean s = client.rolemgr.deleteRole(role.serverRole.getName());
+									if(s) arg1.log("Triumph gelöscht: " + role.serverRole.getName(), true);
+									else arg1.log("Etwas ist beim löschen von " + role.serverRole.getName() + " schiefgelaufen", true);
+								}
+								arg1.log("Alle Triumphe mit id " + arg0[1].toString() + " gelöscht!", true);
+							} else arg1.log(description, true);
+						} else if(arg0[0].toString().equals("give")) {
+							if(arg0.length >= 4) {
+								client.rolemgr.setProgressForMember(arg0[1].toString(), 
+										arg0[2].toString(), Integer.valueOf(arg0[3].toString()));
+							}
+						} else if(arg0[0].toString().equals("listuser")) {
+							if(arg0.length >= 2) {
+								Member member = client.getServer().getMemberById(Snowflake.of(arg0[1].toString())).block();
+								String message = "Liste alle Triumphe von " + member.getUsername() + " auf:\n";
+								for(BotRole role : client.rolemgr.getAquiredTriumphsFromMember(member.getId().asString())) {
+									message += role + "\n";
+								}
+								arg1.log(message, false);
+							}
+						} else if(arg0[0].toString().equals("setproperty")) {
+							if(arg0.length >= 4) {
+								client.rolemgr.setTriumphProperty(arg0[1].toString(), arg0[2].toString(), arg0[3].toString());
+								arg1.log("Variable gesetzt", true);
+							} else arg1.log("setproperty <rolename> <name> <value> (rolename=Name der Discord Rolle)", true);
+						} else if(arg0[0].toString().equals("listproperty")) {
+							if(arg0.length >= 2) {
+								arg1.log("Alle Variablen für: " + arg0[1].toString(), true);
+								Node n = client.database.get("roles").getAsNode();
+								if(n != null) {
+									Node role = n.get(arg0[1].toString()).getAsNode();
+									if(role != null) {
+										arg1.log(role.printTree(), true);
+									} else arg1.log("Rolle nicht gefunden", true);
+								}
+							} else arg1.log("listproperty <rolename>", true);
+						} else arg1.log("Argumente sind: " + description, true);
+						return null;
+					}
+				},
+				
+				new Command("save", "", "Updated die Datenbank") {
+					@Override
+					public Object execute(Object[] arg0, Process arg1, Block arg2) throws Exception {
+						User user = (User) arg1.getVariable("invoker", arg2);
+						if(!arg1.getVariable("admin", arg2).toString().equals("true") && !client.isMod(user.getId().asString())) {
+							arg1.log("Tut mir leid, aber nur mods haben zugriff auf diesen Befehl", true);
+							return null;
+						}
+						
+						if(client.database.save()) {
+							arg1.log("Die Datenbank wurde aktualisiert", true);
+						} 
+						return null;
+					}
+				},
+				
+				new Command("stop", "", "Stoppt den Bot halt") {
+					@Override
+					public Object execute(Object[] arg0, Process arg1, Block arg2) throws Exception {
+						User user = (User) arg1.getVariable("invoker", arg2);
+						if(!arg1.getVariable("admin", arg2).toString().equals("true") && !client.isMod(user.getId().asString())) {
+							arg1.log("Tut mir leid, aber nur mods haben zugriff auf diesen Befehl", true);
+							return null;
+						}
+						
 						Logger.log("Loggin out and stopping...");
 						client.getBotClient().logout().block();
 						System.exit(-1);
 						return null;
 					}
+				},
+				
+				new Command("notify", "", "") {
+					@Override
+					public Object execute(Object[] arg0, Process arg1, Block arg2) throws Exception {
+						User user = (User) arg1.getVariable("invoker", arg2);
+						if(!arg1.getVariable("admin", arg2).toString().equals("true") && !client.isMod(user.getId().asString())) {
+							arg1.log("Tut mir leid, aber nur mods haben zugriff auf diesen Befehl", true);
+							return null;
+						}
+						
+						Channel channel = (Channel) arg1.getVariable("channel", arg2);
+						if(channel.getType() != Type.DM) {
+							client.database.addString("main-post-channel", channel.getId().asString());
+							arg1.log("Der Standartkanal wurde auf '" + client.getServer().getChannelById(channel.getId()).block().getName() + "' umgestellt.", true);
+							client.database.save();
+						} else arg1.error("Ich kann keine Kanäle vom Typ " + channel.getType().name() + " zum Standartkanal machen!");
+						return null;
+					}
+				},
+				
+				new Command("op", "string", "<userId> Ernennt einen Discord user zum Administrator") {
+					@Override
+					public Object execute(Object[] arg0, Process arg1, Block arg2) throws Exception {
+						User user = (User) arg1.getVariable("invoker", arg2);
+						if(!arg1.getVariable("admin", arg2).toString().equals("true") && !client.isMod(user.getId().asString())) {
+							arg1.log("Tut mir leid, aber nur mods haben zugriff auf diesen Befehl", true);
+							return null;
+						}
+						
+						if (client.grantMod(arg0[0].toString())) {
+							arg1.log(client.getServer().getMemberById(Snowflake.of(arg0[0].toString())).block().getDisplayName() + " ist Administrator", true);
+							return null;
+						} else arg1.log("Benutzer mit der id " + arg0[0].toString() + " ist kein Mitglied des Servers!", true);
+						return null;
+					}
+				},
+				
+				new Command("deop", "string", "<userId> Nimmt einem User die Administrator Rechte") {
+					@Override
+					public Object execute(Object[] arg0, Process arg1, Block arg2) throws Exception {
+						User user = (User) arg1.getVariable("invoker", arg2);
+						if(!arg1.getVariable("admin", arg2).toString().equals("true") && !client.isMod(user.getId().asString())) {
+							arg1.log("Tut mir leid, aber nur mods haben zugriff auf diesen Befehl", true);
+							return null;
+						}
+						
+						client.removeMod(arg0[0].toString());
+						arg1.log(arg0[0].toString() + " ist kein Administrator mehr", true);
+						return null;
+					}
+				},
+				
+				new Command("modhelp", "", "") {
+
+					@Override
+					public Object execute(Object[] arg0, Process arg1, Block arg2) throws Exception {
+						User user = (User) arg1.getVariable("invoker", arg2);
+						if(!arg1.getVariable("admin", arg2).toString().equals("true") && !client.isMod(user.getId().asString())) {
+							arg1.log("Tut mir leid, aber nur mods haben zugriff auf diesen Befehl", true);
+							return null;
+						}
+						
+						String message = "";
+						for(GeneratedLibrary c : arg1.getLibraries()) {
+							message += "\n_**Library/Plugin: '" + c.name + "'**_:\n";
+							for(Command command : c.commands) {
+								message += "   **" + command.name +  "**: " + (command.description.isEmpty() ? "-" : command.description) + "\n";
+							}
+						}
+						arg1.log(message + "", true);
+						return null;
+					}
+					
 				}
 		};
 	}

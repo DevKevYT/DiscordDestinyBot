@@ -4,7 +4,7 @@ import discord4j.core.object.entity.Message;
 
 public interface Handshake {
 	
-	public class ResponsePayload {
+	public class OAuthResponseData {
 		
 		public final String accessToken;
 		public final String refreshToken;
@@ -12,7 +12,7 @@ public interface Handshake {
 		public final long expires;
 		public final Message requestMessage;
 		
-		ResponsePayload(String accessToken, String refreshToken, String bungieMembership, long expires, Message requestMessage) {
+		OAuthResponseData(String accessToken, String refreshToken, String bungieMembership, long expires, Message requestMessage) {
 			this.accessToken = accessToken;
 			this.refreshToken = refreshToken;
 			this.bungieMembership = bungieMembership;
@@ -22,7 +22,7 @@ public interface Handshake {
 	}
 	
 	/**This function is fired, when the destiny member could be found*/
-	public Response<?> success(ResponsePayload data);
+	public Response<?> success(OAuthResponseData data);
 	
 	public Response<?> error(String message);
 }

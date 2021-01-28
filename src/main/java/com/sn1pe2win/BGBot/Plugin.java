@@ -11,7 +11,6 @@ import com.sn1pe2win.destiny2.DiscordDestinyMember;
 import discord4j.core.event.domain.guild.MemberJoinEvent;
 import discord4j.core.event.domain.guild.MemberLeaveEvent;
 import discord4j.core.event.domain.message.MessageCreateEvent;
-import discord4j.core.object.entity.User;
 
 /**Um ein Plugin zu implementieren, sollte eine beliebige Klasse der jar datei von dieser Klasse erben*/
 public abstract class Plugin {
@@ -19,6 +18,11 @@ public abstract class Plugin {
 	public final String[] version = new String[] {"1", "5", "2"};
 	public BotClient client;
 	File file;
+	Class<?> classData;
+	
+	/**True, if multiple plugin classes are in the same file*/
+	boolean fileAmbigous = false;
+	
 	/**This can be used to distinguish between different plugin versions and to check, if the most recent plugin version is running!*/
 	public short VERSION = 0;
 	
@@ -30,6 +34,9 @@ public abstract class Plugin {
 		return file;
 	}
 	
+	public String toString() {
+		return file.getName() + " $" + classData.getName() + ".class" + " (Ver: " + VERSION + ")";
+	}
 	
 	public abstract Library addLibrary();
 	
@@ -51,7 +58,8 @@ public abstract class Plugin {
 	
 	public abstract void onMemberLeave(MemberLeaveEvent event);
 	
+	public abstract void onTriumphAquired(MemberTriumphEvent event);
 	/**Pretty unique function. Executed, when the {@link Handshake#success(String, discord4j.core.object.entity.Message)} or {@link Handshake#error(String)}
 	 * is called in the //link command in {@link DefaultCommands}*/
-	public abstract void onMemberLinked(boolean success, String message, String destinyMembershipID, User discordMember);
+	public abstract void onMemberLinked(MemberLinkedEvent event);
 }

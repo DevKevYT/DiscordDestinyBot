@@ -7,6 +7,7 @@ import java.util.ArrayList;
 
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.utils.Json;
+import com.sn1pe2win.BGBot.Logger;
 import com.sn1pe2win.DataFlow.Values.Data;
 import com.sn1pe2win.DataFlow.Values.DataVariable;
 
@@ -34,19 +35,38 @@ public class Node {
 		this.variables = mainNode.variables;
 	}
 	
+	/**Creates an empty node, not declared as main node*/
+	public Node() {
+		this.mainNode = null;
+		this.variables = new ArrayList<Values.DataVariable>();
+	}
+	
 	/**Lädt die Daten direkt aus der Datenbank im JSON format*/
 	public Node(File file) {
+		if(!file.exists()) throw new IllegalArgumentException("Database file not found");
 		this.file = file;
 		FileHandle fh = new FileHandle(file);
-		Data data = null;
 		
 		try {
-			data = handler.fromJson(Data.class, fh);
+			this.mainNode = handler.fromJson(Data.class, fh);
+			this.variables = mainNode.variables;
+			return;
 		} catch(Exception e) {
-			e.printStackTrace();
+			Logger.warn("This file is not readable. Trying to load using the new format...");
+			
+			try {
+				this.mainNode = FileReader.parse(file).getData();
+				this.variables = mainNode.variables;
+			} catch(Exception ex) {
+				Logger.err("This file is still unreadable!");
+				ex.printStackTrace();
+			}
+			if(this.mainNode == null) {
+				this.mainNode = new Data();
+				this.variables = new ArrayList<Values.DataVariable>();
+			}
+			return;
 		}
-		this.mainNode = data;
-		this.variables = mainNode.variables;
 	}
 	
 	public boolean save() {
@@ -59,7 +79,7 @@ public class Node {
 		
 		try {
 			BufferedWriter writer = new BufferedWriter(new FileWriter(file));
-			writer.write(handler.prettyPrint(mainNode));
+			writer.write(FileReader.print(this));
 			writer.flush();
 			writer.close();
 			return true;
@@ -75,6 +95,14 @@ public class Node {
 		Node exist = get(name).getAsNode();
 		if(exist != null) return exist;
 		else return addNode(name);
+	}
+	
+	/**Tries to find an array with this name.
+	 * If none exist, an empty array is created and returned*/
+	public Variable getCreateArray(String name) {
+		Variable exist = get(name);
+		if(exist.isUnknown() || !exist.isArray()) return addArray(name, new String[] {}).get(name);
+		else return exist;
 	}
 	
 	public Variable get(String name) {
@@ -122,6 +150,15 @@ public class Node {
 		return mainNode != null;
 	}
 	
+	public void setName(String name) {
+		this.name = name;
+		if(getParent() != null) {
+			if(getParent().contains(name)) {
+				getParent().get(name).data.inherit = this.variables;
+			}
+		}
+	}
+	
 	public String getName() {
 		return name == null ? "BASE" : name;
 	}
@@ -156,6 +193,14 @@ public class Node {
 			}
 			return null;
 		}
+	}
+	
+	/**Adds a node with all its contents with the given name. The possible name of the node itself
+	 * is getting overwritten*/
+	public Node addNode(String name, Node node) {
+		Node created = this.addNode(name);
+		created.variables.addAll(node.variables);
+		return created;
 	}
 	
 	/**Fügt eine String Variable hinzu.
@@ -241,8 +286,9 @@ public class Node {
 		return current.get(parts[parts.length-1]);
 	}
 	
-	private void verifyName(String name) {
-		if(name.contains(" ") || name.length() == 0 || name.contains("/")) throw new IllegalArgumentException("\"" + name + "\": Variables should not contain spaces, / characters or be empty!");
+	public static void verifyName(String name) {
+		if(name.length() == 0 || name.contains("/")) 
+			throw new IllegalArgumentException("\"" + name + "\": Variables should not contain / characters or be empty!");
 	}
 	
 	public int size() {

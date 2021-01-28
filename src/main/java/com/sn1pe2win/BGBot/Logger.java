@@ -59,7 +59,10 @@ public class Logger {
 				writer.write(content);
 				writer.flush();
 			}
-			if(consoleLog || logFile == null) System.out.print(content);
+			if(consoleLog || logFile == null) {
+				if(beforeDate.equals("[ERROR] ")) System.err.print(content);
+				else System.out.print(content);
+			}
 		} catch (IOException e) {
 			e.printStackTrace();
 		}

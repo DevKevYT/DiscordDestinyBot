@@ -1,5 +1,8 @@
 package com.sn1pe2win.DataFlow;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
+
 import com.sn1pe2win.DataFlow.Values.DataVariable;
 
 public final class Variable {
@@ -66,6 +69,8 @@ public final class Variable {
 		return data.number.longValue();
 	}
 	
+	/**Large numbers may forse a scientific notation.
+	 * To get the number as a plain string, user {@link Variable#getAsString()}*/
 	public Float getAsNumber() {
 		return data.number;
 	}
@@ -77,6 +82,7 @@ public final class Variable {
 	
 	public String getAsString() {
 		if(isString()) return data.string;
+		else if(isNumber()) return new BigDecimal(data.number).toPlainString();
 		else return null;
 	}
 	
@@ -105,6 +111,28 @@ public final class Variable {
 	public void setArray(String...stringValues) {
 		erase();
 		data.array = stringValues;
+	}
+	
+	public void addArrayEntry(String stringValue) {
+		if(!isArray()) return;
+		
+		String[] newArray = new String[data.array.length + 1];
+		for(int i = 0; i < newArray.length-1; i++) {
+			newArray[i] = data.array[i];
+		}
+		newArray[data.array.length] = stringValue;
+		data.array = newArray;
+	}
+	
+	public void removeArrayEntry(String valueToRemove) {
+		if(!isArray()) return;
+		ArrayList<String> newArray = new ArrayList<>(data.array.length);
+		for(int i = 0; i < data.array.length; i++) {
+			if(!data.array[i].equals(valueToRemove)) {
+				newArray.add(data.array[i]);
+			} 
+		}
+		data.array = newArray.toArray(new String[newArray.size()]);
 	}
 	
 	private void erase() {

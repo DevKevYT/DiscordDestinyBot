@@ -12,7 +12,7 @@ import java.util.Random;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import com.sn1pe2win.BGBot.Logger;
-import com.sn1pe2win.api.Handshake.ResponsePayload;
+import com.sn1pe2win.api.Handshake.OAuthResponseData;
 
 import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.Message;
@@ -111,20 +111,23 @@ public class OAuthHandler {
 							    			if(membershipId == null) {
 							    				states.listener.error("POST request ist fehlgeschlagen " + response.toString());
 							    				Response<?> res = states.listener.error("POST request ist fehlgeschlagen " + response.toString());
+							    				if(res == null) res = response;
 								    			send_response("Etwas ist schiefgelaufen: <br>" + res.errorMessage, resWriter);
 							    			} else {
-							    				ResponsePayload payload = new ResponsePayload(access_token != null ? access_token.getAsString() : "", 
+							    				OAuthResponseData payload = new OAuthResponseData(access_token != null ? access_token.getAsString() : "", 
 							    						refresh_token != null ? refresh_token.getAsString() : "", 
 							    						membershipId.getAsString(), 
 							    						expires != null ? (long) (System.currentTimeMillis() / 1000f) + expires.getAsLong() - 1 : 0,
 							    						states.message);
 							    				Response<?> res = states.listener.success(payload);
+							    				if(res == null) res = response;
 							    				Logger.log("Login successfull. Sending response...");
 							    				send_response(res.errorMessage, resWriter);
 							    			}
 							    		} else {
 							    			Logger.err("Error sending POST " + response.toString() + " POST failed");
 							    			Response<?> res = states.listener.error("POST request ist fehlgeschlagen " + response.toString());
+							    			if(res == null) res = response;
 							    			send_response("Etwas ist schiefgelaufen: <br>" + res.errorMessage, resWriter);
 							    		}
 									}

@@ -14,7 +14,6 @@ import com.sn1pe2win.destiny2.DiscordDestinyMember;
 import discord4j.core.event.domain.guild.MemberJoinEvent;
 import discord4j.core.event.domain.guild.MemberLeaveEvent;
 import discord4j.core.event.domain.message.MessageCreateEvent;
-import discord4j.core.object.entity.User;
 
 public class PluginManager {
 	
@@ -22,7 +21,13 @@ public class PluginManager {
 	
 	public ArrayList<Plugin> loadPlugin(File file, BotClient client) throws Exception {
 		if(pluginLoaded(file)) return new ArrayList<>(0);
-		if(!file.exists()) System.err.println("Plugin file: " + file.getAbsolutePath() + " not found or does not exist!");
+		if(!file.exists()) {
+			file = new File(file.getAbsolutePath());
+			if(!file.exists()) {
+				Logger.err("Plugin file: " + file.getAbsolutePath() + " not found or does not exist!");
+				return new ArrayList<>(0);
+			}
+		}
 		
 		URI uri = file.getAbsoluteFile().toURI();
 		URL url = uri.toURL();
@@ -36,22 +41,30 @@ public class PluginManager {
 			return new ArrayList<Plugin>();
 		}
 		
-		for(Class<? extends Plugin> objects : reflections.getSubTypesOf(Plugin.class)) {
-			Plugin pluginObject = objects.getConstructor(BotClient.class).newInstance(client);
-			//if(versionMatch(pluginObject.version, Main.version)) System.err.println("Versions do not match. Plugin may cause errors");
-			pluginObject.file = file;
-			loadedPlugins.add(pluginObject);
-			loaded.add(pluginObject);
-			Logger.log("Plugin class loaded: " + pluginObject.getClass().getCanonicalName());
-			Logger.log("Plugin Version: " + pluginObject.VERSION);
-			try {
-				pluginObject.onPluginLoad();
-			} catch(Exception e) {
-				System.err.println("Error in plugin function onPluginLoad() " + e.getMessage());
-				e.printStackTrace();
+		Logger.log("Loading plugin file: " + file.getName());
+		try {
+			for(Class<? extends Plugin> objects : reflections.getSubTypesOf(Plugin.class)) {
+				Plugin pluginObject = objects.getConstructor(BotClient.class).newInstance(client);
+				//if(versionMatch(pluginObject.version, Main.version)) System.err.println("Versions do not match. Plugin may cause errors");
+				pluginObject.file = file;
+				pluginObject.classData = objects;
+				loadedPlugins.add(pluginObject);
+				loaded.add(pluginObject);
+				Logger.log("Plugin class loaded: " + pluginObject.getClass().getCanonicalName() + ".class, Version: " + pluginObject.VERSION);
+				try {
+					pluginObject.onPluginLoad();
+				} catch(Exception e) {
+					System.err.println("Error in pluginclass " + pluginObject.classData.getTypeName() + "function onPluginLoad() " + e.getMessage());
+					e.printStackTrace();
+				}
 			}
+		} catch(Exception e) {
+			Logger.err("Failed to load file" + e.getMessage());
 		}
-		Logger.log("Plugins loaded successfully");
+		
+		if(loaded.size() > 1) {
+			for(Plugin l : loaded) l.fileAmbigous = true;
+		}
 		return loaded; 
 	}
 	
@@ -59,16 +72,21 @@ public class PluginManager {
 	public File removePlugin(String fileName) {
 		for(Plugin p : loadedPlugins) {
 			if(p.getFile().getName().equals(fileName)) {
-				Logger.log("Plugin removed " + p.getFile().getAbsolutePath());
 				
-				try {
-					p.onPluginRemove();
-				} catch(Exception e) {
-					Logger.err("Error in plugin function onPluginRemove() " + e.getMessage());
-					e.printStackTrace();
+				for(int i = 0; i < loadedPlugins.size(); i++) {
+					if(loadedPlugins.get(i).getFile().getName().equals(fileName)) {
+						Logger.log("Plugin removed " + loadedPlugins.get(i));
+						
+						try {
+							loadedPlugins.get(i).onPluginRemove();
+						} catch(Exception e) {
+							Logger.err("Error in plugin function onPluginRemove() " + e.getMessage() + " for plugin " + loadedPlugins.get(i));
+							e.printStackTrace();
+						}
+						loadedPlugins.remove(loadedPlugins.get(i));
+						i = 0;
+					}
 				}
-				
-				loadedPlugins.remove(p);
 				return p.file;
 			}
 		}
@@ -152,11 +170,22 @@ public class PluginManager {
 		}
 	}
 	
-	public void triggerOnMemberLinked(boolean success, String message, String membershipID, User member) {
+	public void triggerOnMemberLinked(MemberLinkedEvent event) {
 		for(Plugin p : loadedPlugins) {
 			try {
-				p.onMemberLinked(success, message, membershipID, member);
-			}catch(Exception e) {
+				p.onMemberLinked(event);
+			} catch(Exception e) {
+				Logger.err("Catched Plugin error!" + p.file.getAbsolutePath());
+				e.printStackTrace();
+			}
+		}
+	}
+	
+	public void triggerOnMemberTriumph(MemberTriumphEvent event) {
+		for(Plugin p : loadedPlugins) {
+			try {
+				p.onTriumphAquired(event);
+			} catch(Exception e) {
 				Logger.err("Catched Plugin error!" + p.file.getAbsolutePath());
 				e.printStackTrace();
 			}

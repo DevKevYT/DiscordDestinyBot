@@ -9,10 +9,12 @@ import com.sn1pe2win.api.OAuthHandler;
 public class Main {
 	
 	public static OAuthHandler remoteAuthetification;
-	public static final String VERSION = "2.0.10";
+	public static final String VERSION = "2.1.2";
+	private static String[] args;
 	
 	public static void main(String [] args) throws Exception {
 		if(args.length == 0) throw new IllegalArgumentException("Missing config file path");
+		Main.args = args;
 		
 		try {
 			Logger.configure(args.length >= 2 ? args[1] : null);
@@ -22,8 +24,16 @@ public class Main {
 			System.err.println("Unable to create log file: " + e.getMessage());
 		}
 		
+//		if(System.getProperty("bot-running") != null) {
+//			Logger.err("A bot instance is already running on this machine. Exiting.");
+//			System.exit(-1);
+//		}
+		
+		System.setProperty("bot-running", "true");
+		
 		Logger.log("Version: " + VERSION);
 		Logger.log("Initializing OAuth2.0");
+		
 		
 		Node database = new Node(new File(args[0]));
 		
@@ -32,5 +42,11 @@ public class Main {
 		
 		BotClient bot = new BotClient(database);
 		bot.build();
+		
+		//System.setProperty("bot-running", null);
+	}
+	
+	public static String[] getArguments() {
+		return args;
 	}
 }

@@ -6,6 +6,7 @@ import java.util.Map.Entry;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.sn1pe2win.BGBot.BotClient;
 import com.sn1pe2win.BGBot.Logger;
 import com.sn1pe2win.DataFlow.Node;
 import com.sn1pe2win.DataFlow.Variable;
@@ -33,27 +34,37 @@ public class DiscordDestinyMember {
 	//Bot and Database stuff
 	Member linkedMember; //May be null
 	
+	public BotClient botclient;
 	public Node userNode;
 	public Node database;
 	public Node userList;
+	public Node triumphList;
 	
 	/**This only touches the discord stuff. The full destiny profile is loaded at the load() function*/
-	public DiscordDestinyMember(Member member, Node database) {
+	public DiscordDestinyMember(Member member, BotClient botInstance) {
 		this.linkedMember = member;
-		this.database = database;
+		this.botclient = botInstance;
+		this.database = botInstance.database;
 		if(database != null) userList = database.getCreateNode("users");
 	}
 	
-	/**This will also work, but you won't be able to handly any discord stuff*/
+	/**@deprecated This will also work, but you won't be able to process any discord stuff*/
 	public DiscordDestinyMember() {
 		this.linkedMember = null;
 		this.database = null;
+		botclient = null;
+	}
+	
+	public DiscordDestinyMember(BotClient botInstance) {
+		this.linkedMember = null;
+		this.database = botInstance.database;
+		this.botclient = botInstance;
 	}
 	
 	/**Loads the profile from the database. The variables would be located here:<br>
-	 * MembershipId: users/DISCORD-MEMBER-ID/destiny-membership-id<br>
-	 * Platform:     BASE/users.DISCORD-MEMBER-ID/platform<br>
-	 * If any of the named Variables are not found, it is emittet through the response*/
+	 * MembershipId: users.DISCORD-MEMBER-ID.destiny-membership-id<br>
+	 * Platform:     users.DISCORD-MEMBER-ID.platform<br>
+	 * If any of the named Variables are not found, it is emitted through the response*/
 	public Response<DestinyMemberEntity> loadDestinyEntity() {
 		if(linkedMember == null || database == null) return new Response<EntityData.DestinyMemberEntity>(null, 500, "BotError", "Cannot load destiny profile from database when this instance is not linked", 0);
 		
@@ -149,6 +160,7 @@ public class DiscordDestinyMember {
 		if(nodeTest.isUnknown() || !nodeTest.isNode()) {
 			Logger.log("Registering user " + linkedMember.getId().asString());
 			userNode = userList.addNode(linkedMember.getId().asString());
+			
 			if(entity != null) {
 				userNode.addString(ID_VARIABLE_NAME, entity.memberUID)
 				.addNumber(PLATFORM_VARIABLE_NAME, entity.platform.id);

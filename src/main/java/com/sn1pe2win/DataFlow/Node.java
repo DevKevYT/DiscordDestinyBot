@@ -105,6 +105,12 @@ public class Node {
 		else return exist;
 	}
 	
+	public Variable getCreateString(String name, String fallbackValue) {
+		Variable exist = get(name);
+		if(exist.isUnknown() || !exist.isString()) return addString(name, fallbackValue).get(name);
+		else return exist;
+	}
+	
 	public Variable get(String name) {
 		for(DataVariable var : variables) {
 			if(var.name.equals(name)) return new Variable(this, var);

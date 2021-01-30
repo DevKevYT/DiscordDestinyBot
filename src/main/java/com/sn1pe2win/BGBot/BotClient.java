@@ -536,6 +536,36 @@ public class BotClient {
 		return server;
 	}
 	
+	/**Illegal properties to set:
+	 * triumphs, access-token, destiny-member-id, platform*/
+	public void setMemberProperty(String memberId, String propertyName, Object propertyValue) {
+		if(!isServerMember(memberId)) {
+			Logger.err("Member with id " + memberId + " is not a member of this server!");
+			return;
+		}
+		if(propertyName.equals("triumphs") || propertyName.equals("access-token") || propertyName.equals("destiny-member-id") || propertyName.equals("platform")) {
+			Logger.err("Illegal property name " + propertyName + " to modify");
+			return;
+		}
+		Node memberNode = database.getCreateNode("users").getCreateNode(memberId);
+		if(propertyValue instanceof String || propertyValue instanceof Float || propertyValue instanceof String[])
+			memberNode.addVariable(propertyName, propertyValue);
+		else if(propertyValue instanceof Long || propertyValue instanceof Integer || propertyValue instanceof Byte 
+				|| propertyValue instanceof Short) memberNode.addVariable(propertyName, Float.valueOf(propertyValue.toString())); 
+		else if(propertyValue instanceof Node) memberNode.addNode(propertyName, (Node) propertyValue);
+		else Logger.err("Unsupported property value for name " + propertyName + ": " + propertyValue.getClass().getTypeName());
+	}
+	
+	public Variable getMemberProperty(String memberId, String propertyName) {
+		if(!isServerMember(memberId)) {
+			Logger.err("Member with id " + memberId + " is not a member of this server!");
+			return Variable.UNKNOWN;
+		}
+		
+		Node memberNode = database.getCreateNode("users").getCreateNode(memberId);
+		return memberNode.get(propertyName);
+	}
+	
 	public boolean isServerMember(String id) {
 		Member member = null;
 		try {

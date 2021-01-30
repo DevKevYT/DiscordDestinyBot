@@ -81,13 +81,11 @@ public class BungieAPI {
 		}
 	}
 	
-	public static Response<JsonObject> sendGet(String url) {
-		//if(X_API_KEY.isEmpty()) return new Response<JsonObject>(null, 500, "Missing X_API_KEY", "", 2102);
-		
+	public static Response<JsonObject> sendFullGet(String fullURL) {
 		URL obj;
 		HttpURLConnection con;
 		try {
-			obj = new URL(API_ROOT_PATH + url);
+			obj = new URL(fullURL);
 			con = (HttpURLConnection) obj.openConnection();
 			con.setRequestMethod("GET");
 		} catch (Exception e) {
@@ -129,6 +127,11 @@ public class BungieAPI {
 				errorMessage == null ? "" : errorMessage.getAsString(), 
 				errorCode);
 		return lastResponse;
+	}
+	
+	public static Response<JsonObject> sendGet(String url) {
+		//if(X_API_KEY.isEmpty()) return new Response<JsonObject>(null, 500, "Missing X_API_KEY", "", 2102);
+		return sendFullGet(API_ROOT_PATH + url);
 	}
 	
 	public static Response<?> lastResponse() {

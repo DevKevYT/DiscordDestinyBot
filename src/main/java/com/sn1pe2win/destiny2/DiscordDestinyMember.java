@@ -12,6 +12,8 @@ import com.sn1pe2win.DataFlow.Node;
 import com.sn1pe2win.DataFlow.Variable;
 import com.sn1pe2win.api.BungieAPI;
 import com.sn1pe2win.api.Response;
+import com.sn1pe2win.destiny2.Definitions.ActivityType;
+import com.sn1pe2win.destiny2.Definitions.ClassType;
 import com.sn1pe2win.destiny2.Definitions.MembershipType;
 import com.sn1pe2win.destiny2.EntityData.DestinyCharacterEntity;
 import com.sn1pe2win.destiny2.EntityData.DestinyClanEntity;
@@ -125,6 +127,8 @@ public class DiscordDestinyMember {
 			if(characterData == null) continue;
 			if(entity.characters[i] == null) entity.characters[i] = new DestinyCharacterEntity();
 			entity.characters[i].parse(characterData);
+			entity.characters[i].memberUID = destinyMemberID;
+			entity.characters[i].platform = platform;
 		}
 		charactersLoaded = true;
 		return new Response<EntityData.DestinyMemberEntity>(entity);
@@ -172,6 +176,78 @@ public class DiscordDestinyMember {
 				.addNumber(PLATFORM_VARIABLE_NAME, entity.platform.id);
 			}
 		}
+	}
+	
+	/**@param onlySuccessfull - If the activity objective was completed.
+	 * @param limit - How many entries should get loaded. A limit of 1, would return the last played activity.
+	 * If the limit is higher than the activity list or the limit is 0 ir less, all reported activities are returned*/
+	public Response<DestinyActivity[]> loadActivityHistory(ActivityType type, boolean onlySuccessfull, int limit, ClassType... characters) {
+		//if(!charactersLoaded() || !profileLoaded()) return new Response<DestinyActivity[]>(new DestinyActivity[] {}, 500, "NoCharacterLoaded", "Characters need to get loaded before loading activity stats", 0);
+		
+		ArrayList<DestinyActivity> history = new ArrayList<DestinyActivity>(10);
+		
+		for(int i = 0; i < entity.characters.length; i++) {
+			if(entity.characters[i] == null) continue;
+			boolean found = false;
+			for(ClassType classType : characters) {
+				if(entity.characters[i].classType == classType) {
+					found = true;
+					break;
+				}
+			}
+			if(!found) continue;
+			if(entity.characters[i].characterID == null) 
+				return new Response<DestinyActivity[]>(new DestinyActivity[] {}, 500, "NoCharacterLoaded", "The specified character needs to get loaded before loading stats", 0);
+			
+			int loadedPerCharacter = 0;
+			int page = 0;
+			boolean doPages = limit > 250 || limit <= 0;
+			
+			pager: while(true) {
+				Response<JsonObject> historyPage = BungieAPI.sendGet("/Destiny2/" + entity.platform.id + "/Account/" + entity.memberUID + "/Character/" + entity.characters[i].characterID +  "/Stats/Activities/?mode=" + type.id+ "&count=" + (doPages ? (onlySuccessfull ? 20 : 250) : limit) + "&page=" + page);
+				if(!historyPage.success()) return new Response<DestinyActivity[]>(null, historyPage.httpStatus, historyPage.errorStatus, historyPage.errorMessage, historyPage.errorCode);
+				if(historyPage.getPayload().getAsJsonObject("Response").keySet().isEmpty()) break pager;
+				
+				JsonArray activities = historyPage.getPayload().getAsJsonObject("Response").getAsJsonArray("activities");
+				
+				if(activities != null) { //keine aktivität für spieler gefunden
+					for(int j = 0; j < activities.size(); j++) {
+						if(activities.get(j).getAsJsonObject().getAsJsonObject("values").getAsJsonObject("completed").getAsJsonObject("basic").getAsJsonPrimitive("value").getAsInt() == 1 || !onlySuccessfull) {
+							long referenceId = activities.get(j).getAsJsonObject().getAsJsonObject("activityDetails").getAsJsonPrimitive("referenceId").getAsLong();
+							Response<ActivityDefinitions> response = ActivityDefinitions.getByReferenceId(referenceId);
+							if(response.success() && response.containsPayload()) {
+								DestinyActivity a = new DestinyActivity(response.getPayload(), activities.get(j).getAsJsonObject().getAsJsonObject("activityDetails").getAsJsonPrimitive("instanceId").getAsLong(), 
+										activities.get(j).getAsJsonObject());
+								a.character = entity.characters[i];
+								history.add(a);
+								loadedPerCharacter++;
+								if(loadedPerCharacter == limit) break pager;
+							} else Logger.err(response.toString());
+						}
+					}
+				}
+				page++;
+			}
+		}
+		//If we selected multiple characters, sort those activities by time
+		if(characters.length > 1) {
+			ArrayList<DestinyActivity> sorted = new ArrayList<DestinyActivity>();
+			while(!history.isEmpty()) {
+				long record = 0;
+				int targetIndex = -1;
+				for(int i = 0; i < history.size(); i++) {
+					if(history.get(i).getEntity().timestamp.getTime() >= record) {
+						targetIndex = i;
+						record = history.get(i).getEntity().timestamp.getTime();
+					}
+				}
+				if(targetIndex != -1) {
+					sorted.add(history.get(targetIndex));
+					history.remove(targetIndex);
+				}
+			}
+			return new Response<DestinyActivity[]>(sorted.toArray(new DestinyActivity[sorted.size()]));
+		} else return new Response<DestinyActivity[]>(history.toArray(new DestinyActivity[history.size()]));
 	}
 	
 	public Response<DestinyActivity[]> loadRaidHistory(boolean onlySuccessfull) {
@@ -238,6 +314,21 @@ public class DiscordDestinyMember {
 			}
 		}
 		return chosen;
+	}
+	
+	public DestinyCharacterEntity[] getCharacters() {
+		return entity.characters;
+	}
+	
+	/**If the class type is there multiple times (But why?!) the first occurrence is returned.
+	 * The the class type is not present, null is returned*/
+	public DestinyCharacterEntity getCharacterByClassType(ClassType classType) {
+		for(int i = 0; i < entity.characters.length; i++) {
+			if(entity.characters[i] != null) {
+				if(entity.characters[i].classType == classType) return entity.characters[i];
+			}
+		}
+		return null;
 	}
 	
 	public DestinyMemberEntity getEntity() {

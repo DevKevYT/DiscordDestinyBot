@@ -24,19 +24,53 @@ public class RoleManager {
 		public final Role serverRole;
 		public final int requirement;
 		public final String progressId;
-		public boolean forceRole;
-		public final Node roleNode;
+		public final Node node;
+		//Forcerole is now in the database
 		
-		private BotRole(Role serverRole, int requirement, String progressId, boolean forceRole, Node roleNode) {
+		private BotRole(Role serverRole, int requirement, String progressId, Node node) {
 			this.serverRole = serverRole;
 			this.requirement = requirement;
 			this.progressId = progressId;
-			this.forceRole = forceRole;
-			this.roleNode = roleNode;
+			this.node = node;
+		}
+		
+		public Color getColor() {
+			return serverRole != null ? serverRole.getColor() : Color.of(Integer.valueOf(node.get("color").getAsArray()[0]), 
+					Integer.valueOf(node.get("color").getAsArray()[1]), Integer.valueOf(node.get("color").getAsArray()[2]));
+		}
+		
+		public String getName() {
+			if(serverRole != null) {
+				return serverRole.getName();
+			} else return node.getName();
+		}
+		
+		/**If false, the serverRole may not exist/be null*/
+		public boolean doForceRole() {
+			Variable fr = node.get("force-role");
+			if(fr.isUnknown() || !fr.isString()) {
+				node.addString("force-role", "false");
+			}
+			return fr.getAsString().equals("true");
+		}
+		
+		public String getTriumphProperty(String propertyName) {
+			return node.get(propertyName).getAsString();
+		}
+		
+		public void setTriumphProperty(String name, String value) {
+			if(name.equals(PROGRESS_ID_NAME) 
+					|| name.equals(ROLE_ID_NAME)
+					|| name.equals(ROLE_COLOR_NAME)
+					|| name.equals(ROLE_REQUIREMENT_NAME)) {
+				Logger.log("Illegal property name " + name);
+				return;
+			}
+			node.addString(name, value);
 		}
 		
 		public String toString() {
-			return roleNode.getName() + " [" + progressId + " -> " + requirement + "]";
+			return getName() + " [" + requirement + " -> " + progressId + "]";
 		}
 	}
 	
@@ -81,8 +115,8 @@ public class RoleManager {
 		for(Variable databaseRole : roleNode.getVariables()) {
 			
 			Logger.log("Checking role '" + databaseRole.getName() + "'");
-			final Role finalServerRole;
-			//If, for whatever reason the role info variable is not a node, overwrite this variable and make a node out of it
+			Role finalServerRole = null;
+			 //If, for whatever reason the role info variable is not a node, overwrite this variable and make a node out of it
 			if(!databaseRole.isNode()) {
 				Logger.warn("Role " + databaseRole.getName() + " has to be a node. Creating default");
 				roleNode.addNode(databaseRole.getName());
@@ -90,6 +124,7 @@ public class RoleManager {
 			
 			String id = databaseRole.getAsNode().get(ROLE_ID_NAME).getAsString();
 			Role found = null;
+			boolean forceRole = databaseRole.getAsNode().getCreateString("force-role", "false").getAsString().equals("true");
 			if(id != null) {
 				for(Role serverRole : serverRoles) {
 					if(serverRole.getId().asString().equals(id)) {
@@ -99,7 +134,7 @@ public class RoleManager {
 				}
 			}
 			//If the ID could not be found, try to check for the role name and change the id in the database
-			if(found == null) {
+			if(found == null && forceRole) {
 				for(Role serverRole : serverRoles) {
 					if(serverRole.getName().equals(databaseRole.getName())) {
 						Logger.log("Updated role ID in database: " + id + " -> " + serverRole.getId().asString());
@@ -109,13 +144,16 @@ public class RoleManager {
 				}
 			}
 			
-			if(id == null && found == null) finalServerRole = createRole(client.getServer(), databaseRole.getAsNode());
-			else if(found != null) {
+			if(id == null && found == null) {
+				if(forceRole) finalServerRole = createRole(client.getServer(), databaseRole.getAsNode());
+			} else if(found != null) {
 				finalServerRole = found;
 				//Keep the role data in the database updated by just synchronizing the serverRole values
 				databaseRole.getAsNode().addString(ROLE_ID_NAME, found.getId().asString());
 				databaseRole.getAsNode().addArray(ROLE_COLOR_NAME, found.getColor().getRed()+"", found.getColor().getGreen()+"", found.getColor().getBlue()+"");
-			} else finalServerRole = createRole(client.getServer(), databaseRole.getAsNode());
+			} else {
+				if(forceRole) finalServerRole = createRole(client.getServer(), databaseRole.getAsNode());
+			}
 			
 			Variable requirementVar = databaseRole.getAsNode().get(ROLE_REQUIREMENT_NAME);
 			if(requirementVar.isUnknown() || !requirementVar.isNumber()) {
@@ -137,13 +175,13 @@ public class RoleManager {
 				Logger.err("Progress-id contains an illegal name: " + progressIdVar.getAsString() + ". Changing to default: " + DEFAULT_PROGRESS_ID);
 				progressIdVar = databaseRole.getAsNode().addString(PROGRESS_ID_NAME, DEFAULT_PROGRESS_ID).get(PROGRESS_ID_NAME);
 			}
-			boolean force = true;
-			Variable forceRole = databaseRole.getAsNode().get(ROLE_FORCEROLE_NAME);
-			if(!forceRole.isUnknown() && forceRole.isString()) {
-				force = !forceRole.getAsString().equals("false");
-			} else databaseRole.getAsNode().addString(ROLE_FORCEROLE_NAME, "true");
-			
-			finalServerRoles.add(new BotRole(finalServerRole, requirement, progressIdVar.getAsString(), force, databaseRole.getAsNode()));
+			if(finalServerRole != null && !forceRole) {
+				Logger.log("Removing role from server");
+				deleteRole(finalServerRole.getName());
+				databaseRole.getAsNode().get("role-id").delete();
+				finalServerRole = null;
+			}
+			finalServerRoles.add(new BotRole(finalServerRole, requirement, progressIdVar.getAsString(), databaseRole.getAsNode()));
 		}
 		
 		botRoles = finalServerRoles;
@@ -162,9 +200,16 @@ public class RoleManager {
 				if(getById(role.getId().asString()) != null) {
 					remove = true;
 					for(BotRole canHave : legal) {
-						if(canHave.serverRole.getId().asString().equals(role.getId().asString())) {
-							remove = false;
-							break;
+						if(canHave.serverRole == null) {
+							if(canHave.getName().equals(role.getName())) {
+								remove = true;
+								break;
+							}
+						} else {
+							if(canHave.serverRole.getId().asString().equals(role.getId().asString())) {
+								remove = false;
+								break;
+							}
 						}
 					}
 				}
@@ -264,6 +309,7 @@ public class RoleManager {
 	 * @returns The BotRole with the corresponding discord role id.*/
 	public BotRole getById(String id) {
 		for(BotRole role : botRoles) {
+			if(role.serverRole == null) continue;
 			if(role.serverRole.getId().asString().equals(id)) return role;
 		}
 		return null;
@@ -280,29 +326,38 @@ public class RoleManager {
 	public BotRole addTriumphRole(String triumphName, String progressId, int requirement, Color color, boolean forceRole, boolean edit) {
 		
 		for(BotRole role : botRoles) {
-			if((role.progressId.equals(progressId) && role.requirement == requirement) || role.serverRole.getName().equals(triumphName)) {
-				if(!edit) {
-					Logger.warn("Conflict found but aborting. Since the role should not get modified!");
-					return role;
+			if(role.doForceRole() && role.serverRole != null) {
+				if((role.progressId.equals(progressId) && role.requirement == requirement) || role.serverRole.getName().equals(triumphName)) {
+					if(!edit) {
+						Logger.warn("Conflict found but aborting. Since the role should not get modified!");
+						return role;
+					}
+					Logger.warn("Conflict with existing role found. " + role +" Deleting/overwriting old role");
+					if(roleExists(role.serverRole.getId())) role.serverRole.delete().doOnError(error -> {}).block();
+					botRoles.remove(role);
+					break;
 				}
-				Logger.warn("Conflict with existing role found. " + role +" Deleting/overwriting old role");
-				if(roleExists(role.serverRole.getId())) role.serverRole.delete().doOnError(error -> {}).block();
-				botRoles.remove(role);
-				break;
+			} else if(!role.doForceRole() && role.serverRole == null) {
+				if((role.progressId.equals(progressId) && role.requirement == requirement)) {
+					if(!edit) {
+						Logger.warn("Conflict found but aborting. Since the role should not get modified!");
+						return role;
+					}
+				}
 			}
 		}
 		
 		Node roleAsNode = new Node();
 		roleAsNode.setName(triumphName);
-		roleAsNode.getName();
 		roleAsNode.addNumber(ROLE_REQUIREMENT_NAME, requirement);
 		roleAsNode.addString(PROGRESS_ID_NAME, progressId);
 		roleAsNode.addArray(ROLE_COLOR_NAME, color.getRed(), color.getGreen(), color.getBlue());
 		roleAsNode.addString(ROLE_FORCEROLE_NAME, forceRole ? "true" : "false");
-		Role serverRole = createRole(client.getServer(), roleAsNode);
+		Role serverRole = null;
+		if(forceRole) serverRole = createRole(client.getServer(), roleAsNode);
 		roleNode.addNode(triumphName, roleAsNode);
 		
-		BotRole newRole = new BotRole(serverRole, requirement, progressId, forceRole, roleAsNode);
+		BotRole newRole = new BotRole(serverRole, requirement, progressId, roleAsNode);
 		
 		botRoles.add(newRole);
 		database.save();
@@ -352,51 +407,64 @@ public class RoleManager {
 		if(roleNode.get(string).isUnknown()) return false;
 		
 		for(BotRole role : botRoles) {
-			if(role.serverRole.getName().equals(string)) {
-				roleNode.get(string).delete();
-				botRoles.remove(role);
-				role.serverRole.delete().onErrorStop().block();
-				database.save();
-				return true;
+			if(role.serverRole != null) {
+				if(role.serverRole.getName().equals(string)) {
+					roleNode.get(string).delete();
+					botRoles.remove(role);
+					role.serverRole.delete().onErrorStop().block();
+					database.save();
+					return true;
+				}
 			}
 		}
 		return false;
 	}
 	
 	/**To be able to save triumphs for a discord user
-	 *@return true, if the user got a triumph*/
+	 *@return true, if the user got a triumph
+	 *A member only gets a role assigned, if the role-create and force-role properties are true*/
 	public boolean setProgressForMember(String memberId, String progressId, int progressValue) {
 		if(!client.isServerMember(memberId)) return false;
 		
 		Node userNode = database.get("users").getAsNode().getCreateNode(memberId);
 		Node triumphs = userNode.getCreateNode(TRIUMPH_VARIABLE_NAME);
 		
-		int prevProgress = getProgressByIdForMember(memberId, progressId);
+		final int prevProgress = getProgressByIdForMember(memberId, progressId);
 		boolean forceRole = false;
 		
-		for(BotRole role : getRolesByProgressId(progressId)) {
-			if(role.progressId.equals(progressId)) {
-				
-				if(!roleExists(role.serverRole.getId())) {
-					Logger.warn("Role was somehow deletet. Creating a new one!");
-					botRoles.remove(role);
-					botRoles.add(editTriumphRole(role.serverRole.getName(), progressId, role.requirement, role.serverRole.getColor(), role.forceRole));
+		BotRole current = getRoleByRequirement(progressId, progressValue);
+		if(current != null) {
+			forceRole = current.doForceRole();
+			
+			if(current.serverRole == null && forceRole) {
+				Logger.warn("Role was somehow deletet/properties changed. Creating a new one!");
+				botRoles.remove(current);
+				current = editTriumphRole(current.node.getName(), progressId, current.requirement, current.getColor(), current.doForceRole());
+				botRoles.add(current);
+			} else if(current.serverRole != null && forceRole) {
+				if(!roleExists(current.serverRole.getId()) && forceRole) {
+					Logger.warn("Role was somehow deletet/properties changed. Creating a new one!");
+					botRoles.remove(current);
+					current = editTriumphRole(current.serverRole.getName(), progressId, current.requirement, current.serverRole.getColor(), current.doForceRole());
+					botRoles.add(current);
+				} else if(current.serverRole != null && !forceRole) {
+					botRoles.remove(current);
+					current = editTriumphRole(current.serverRole.getName(), progressId, current.requirement, current.serverRole.getColor(), false);
+					botRoles.add(current);
 				}
-				
-				forceRole = role.forceRole;
-				triumphs.addNumber(progressId, progressValue);
-				break;
 			}
-		}
-		if(!forceRole) return false;
+			
+			triumphs.addNumber(progressId, progressValue);		
+		} else triumphs.addNumber(progressId, 0);
 		
 		Member target = client.getServer().getMemberById(Snowflake.of(memberId)).block();
-		BotRole current = getRoleByRequirement(progressId, progressValue);
 		BotRole previous = getRoleByRequirement(progressId, prevProgress);
 		if(current != null && previous != null) {
 			if(current.requirement > previous.requirement) {
 				if(forceRole) {
-					target.removeRole(previous.serverRole.getId()).block();
+					if(previous.serverRole != null) {
+						if(roleExists(previous.serverRole.getId())) target.removeRole(previous.serverRole.getId()).block();
+					}
 					target.addRole(current.serverRole.getId()).subscribe();
 				}
 				MemberTriumphEvent event = new MemberTriumphEvent();
@@ -407,7 +475,13 @@ public class RoleManager {
 				client.pluginmgr.triggerOnMemberTriumph(event);
 				return true;
 			} else if(current.requirement == previous.requirement) {
-				target.addRole(current.serverRole.getId()).subscribe();
+				if(forceRole) target.addRole(current.serverRole.getId()).subscribe();
+				return false;
+			} else if(current.requirement < previous.requirement) {
+				if(forceRole) target.addRole(current.serverRole.getId()).subscribe();
+				if(previous.serverRole != null) {
+					if(roleExists(previous.serverRole.getId())) target.removeRole(previous.serverRole.getId()).subscribe();
+				}
 				return false;
 			}
 		} else if(current != null && previous == null) {
@@ -420,9 +494,13 @@ public class RoleManager {
 			client.pluginmgr.triggerOnMemberTriumph(event);
 			return true;
 		} else if(current == null && previous != null) {
-			if(forceRole) target.removeRole(previous.serverRole.getId()).subscribe();
+			if(previous.serverRole != null) {
+				if(roleExists(previous.serverRole.getId())) target.removeRole(previous.serverRole.getId()).subscribe();
+			}
 			return false;
 		}
+		
+		syncMemberRoles();
 		return false;
 	}
 	
@@ -455,34 +533,6 @@ public class RoleManager {
 		return aquired.toArray(new BotRole[aquired.size()]);
 	}
 	
-	/**You can edit any triumph properties with this. Except the default ones*/
-	public void setTriumphProperty(String roleName, String propertyName, String propertyValue) {
-		if(propertyName.equals(PROGRESS_ID_NAME) 
-				|| propertyName.equals(ROLE_ID_NAME)
-				|| propertyName.equals(ROLE_COLOR_NAME)
-				|| propertyName.equals(ROLE_REQUIREMENT_NAME)) {
-			Logger.log("Illegal property name " + propertyName);
-			return;
-		}
-		
-		Variable var = roleNode.get(roleName);
-		if(!var.isUnknown() && var.isNode()) {
-			Node n = var.getAsNode();
-			n.addString(propertyName, propertyValue);
-			client.database.save();
-		} else Logger.log("Role name to set property not found");
-	}
-	
-	public String getTriumphProperty(String roleName, String propertyName) {
-		Variable var = roleNode.get(roleName);
-		if(!var.isUnknown() && var.isNode()) {
-			Variable property = var.getAsNode().get(propertyName);
-			if(!property.isUnknown() && property.isString()) {
-				return property.getAsString();
-			} else Logger.log("Property for role " + roleName + " not found: " + propertyName);
-		} else Logger.log("Role name to get property not found");
-		return null;
-	}
 	
 	private boolean roleExists(Snowflake id) {
 		return client.getServer().getRoleById(id).onErrorReturn(null).block() != null;

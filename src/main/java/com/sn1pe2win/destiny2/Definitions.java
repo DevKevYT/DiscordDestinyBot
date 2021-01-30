@@ -15,17 +15,19 @@ public interface Definitions {
 	/**http://destinydevs.github.io/BungieNetPlatform/docs/schemas/Destiny-DestinyClass*/
 	public enum ClassType {
 
-		TITAN((byte) 0, "Titan"), 
-		WARLOCK((byte) 2, "Warlock"), 
-		HUNTER((byte) 1, "Jäger"), 
-		UNKNOWN((byte) 3, "unknown");
+		TITAN((byte) 0, 3655393761L, "Titan"), 
+		WARLOCK((byte) 2, 2271682572L, "Warlock"), 
+		HUNTER((byte) 1, 671679327, "Jäger"), 
+		UNKNOWN((byte) 3, 0, "unknown");
 		
 		public final byte id;
 		public final String readable;
+		public final long hash;
 		
-		ClassType(byte id, String readable) {
+		ClassType(byte id, long hash, String readable) {
 			this.id = id;
 			this.readable = readable;
+			this.hash = hash;
 		}
 		
 		public static ClassType byId(byte id) {
@@ -36,6 +38,13 @@ public interface Definitions {
 				case 3: return UNKNOWN;
 				default: return UNKNOWN;
 			}
+		}
+		
+		public static ClassType byHash(long hash) {
+			for(ClassType type : ClassType.values()) {
+				if(type.hash == hash) return type;
+			}
+			return UNKNOWN;
 		}
 	}
 	
@@ -117,7 +126,10 @@ public interface Definitions {
 		TRIALS_SURVIVAL((short) 42, "Prüfungen von Osiris: Survival"),
 		IRON_BANNER_CONTROL((short) 43, "Eisenbanner Kontrolle"),
 		IRON_BANNER_CLASH((short) 44, "Eisenbanner Team Deathmatch"),
-		IRON_BANNER_SUPREMACY((short) 45, "Einenbanner Supremacy");
+		IRON_BANNER_SUPREMACY((short) 45, "Einenbanner Supremacy"),
+		ALL_PVE((short) 7, "PvE"),
+		ALLSTRIKES((short) 18, "Strikes"),
+		ALL_PVP((short) 5, "PvP");
 		
 		
 		public final short id;

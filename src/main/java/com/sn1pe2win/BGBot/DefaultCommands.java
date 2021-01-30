@@ -368,14 +368,14 @@ public class DefaultCommands extends Library {
 							if(arg0.length == 1) {
 								String message = "";
 								for(BotRole role : client.rolemgr.botRoles) {
-									message += "**'" + role.serverRole.getName() + "'** (" + role.serverRole.getId().asString() + ")" + "\n\t" + role.toString() + "\n";
+									message += "**'" + role.getName() + "'** (" + (role.serverRole != null ? role.serverRole.getId().asString() : " - ") + ")\n\t" + role.toString() + "\n";
 								}
 								arg1.log(message, true);
 							} else if(arg0.length > 1) {
 								String message = "Liste alle **" + arg0[1].toString() + "** Triumphe auf:\n";
 								for(BotRole role : client.rolemgr.botRoles) {
 									if(role.progressId.equals(arg0[1].toString())) {
-										message += "**'" + role.serverRole.getName() + "'** (" + role.serverRole.getId().asString() + ")" + "\n\t" + role.toString() + "\n";
+										message += "**'" + role.getName() + "'** (" + (role.serverRole != null ? role.serverRole.getId().asString() : " - ") + ")" + "\n\t" + role.toString() + "\n";
 									}
 								}
 								arg1.log(message, true);
@@ -388,9 +388,9 @@ public class DefaultCommands extends Library {
 									return null;
 								}
 								for(BotRole role : roles) {
-									boolean s = client.rolemgr.deleteRole(role.serverRole.getName());
-									if(s) arg1.log("Triumph gelöscht: " + role.serverRole.getName(), true);
-									else arg1.log("Etwas ist beim löschen von " + role.serverRole.getName() + " schiefgelaufen", true);
+									boolean s = client.rolemgr.deleteRole(role.getName());
+									if(s) arg1.log("Triumph gelöscht: " + role.getName(), true);
+									else arg1.log("Etwas ist beim löschen von " + role.getName() + " schiefgelaufen", true);
 								}
 								arg1.log("Alle Triumphe mit id " + arg0[1].toString() + " gelöscht!", true);
 							} else arg1.log(description, true);
@@ -410,8 +410,14 @@ public class DefaultCommands extends Library {
 							}
 						} else if(arg0[0].toString().equals("setproperty")) {
 							if(arg0.length >= 4) {
-								client.rolemgr.setTriumphProperty(arg0[1].toString(), arg0[2].toString(), arg0[3].toString());
-								arg1.log("Variable gesetzt", true);
+								for(BotRole r : client.rolemgr.botRoles) {
+									if(r.getName().equals(arg0[1].toString())) {
+										r.setTriumphProperty(arg0[2].toString(), arg0[3].toString());
+										arg1.log("Variable gesetzt", true);
+										return null;
+									}
+								}
+								arg1.log("Role with the name " + arg0[1].toString() + " not found!", true);
 							} else arg1.log("setproperty <rolename> <name> <value> (rolename=Name der Discord Rolle)", true);
 						} else if(arg0[0].toString().equals("listproperty")) {
 							if(arg0.length >= 2) {

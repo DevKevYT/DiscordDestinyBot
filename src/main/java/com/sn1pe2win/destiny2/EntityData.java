@@ -5,6 +5,7 @@ import java.util.Date;
 
 import com.google.gson.JsonObject;
 import com.sn1pe2win.BGBot.Logger;
+import com.sn1pe2win.destiny2.Definitions.ActivityType;
 import com.sn1pe2win.destiny2.Definitions.ClassType;
 import com.sn1pe2win.destiny2.Definitions.MembershipType;
 import com.sn1pe2win.destiny2.Definitions.RaceType;
@@ -30,6 +31,8 @@ public interface EntityData {
 	
 	public class DestinyCharacterEntity {
 		
+		public MembershipType platform;
+		public String memberUID;
 		public String characterID;
 		public int lightLevel;
 		public RaceType raceType;
@@ -84,10 +87,37 @@ public interface EntityData {
 	public class DestinyActivityEntity {
 		
 		public long instanceId;
+		public long activityHash;
 		public DestinyActivityDefinitionEntity definition;
 		public int deaths, kills, durationInSeconds;
 		public String timeDisplay;
 		public boolean checkpoint;
 		public Date timestamp;
+		public ActivityType mode;
+		//public ActivityType[] modes;
+		public MembershipType platform;
+		public boolean isPrivate;
+	}
+	
+	public class PGCREntity {
+		public DestinyActivityEntity activity;
+		public PGCRPlayerEntity[] players;
+	}
+	
+	public class PGCRPlayerEntity {
+		//Not related to any loaded characters
+		public DestinyCharacterEntity character;
+		public long fireteamId;
+		public boolean completed; //KD = kills / deaths
+		public int kills;
+		public int deaths;
+		public float kda;
+		public int playerCount;
+		public int teamScore;
+		public int timePlayedSeconds;
+		public int precisionKills = -1;
+		public int superKills = -1;
+		public int meleeKills = -1;
+		public int abillityKills = -1;
 	}
 }

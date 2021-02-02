@@ -183,9 +183,15 @@ public class BotClient {
 		
 		botClient.on(MemberJoinEvent.class).subscribe(event -> {
 			if(event.getGuildId().asString().equals(server.getId().asString())) {
+				
+				Node userNode = database.get("users").getAsNode().getCreateNode(event.getMember().getId().asString());
+				loadLinkedMember(userNode);
+				
 				pluginmgr.triggerOnMemberJoinEvent(event);
+				
 				if(database.get("on-leave").isUnknown()) database.addNode("on-leave");
 				database.get("on-leave").getAsNode().remove(event.getMember().getId().asString());
+				
 				database.save();
 			}
 		});
@@ -229,6 +235,8 @@ public class BotClient {
 			public void run() {
 				while(true) {
 					synchronized (this) {
+						long leftFromDefaultUpdateDelay = 5 * 60000;
+						long start = System.currentTimeMillis();
 						try {
 							update();
 							System.gc();
@@ -236,8 +244,9 @@ public class BotClient {
 							Logger.err("Error in thread Profile Scheduler " + e.getLocalizedMessage());
 							e.printStackTrace();
 						}
+						leftFromDefaultUpdateDelay = leftFromDefaultUpdateDelay - (System.currentTimeMillis() - start);
 						try {
-							wait((int) 5 * 60000);
+							wait(leftFromDefaultUpdateDelay < 0 ? 0 : leftFromDefaultUpdateDelay);
 						} catch (InterruptedException e) {
 							Logger.err("FATAL Scheduler failed to pause the thread. Aborting\nPlease restart the Bot for proper functioning!");
 							System.exit(-1);
@@ -247,11 +256,46 @@ public class BotClient {
 			}
 		}, "Profile Updater").start();
 		
-		
 		//Logger.log("Debug: create role from code");
 		//Node role = new Node();
 		//rolemgr.createRole(server, "test", role);
 		botClient.onDisconnect().block();
+	}
+	
+	private void loadLinkedMember(Node userNode) {
+		Member discordMember = null;
+		try {
+			discordMember = server.getMemberById(Snowflake.of(userNode.getName())).block();
+		} catch(Exception e) {}
+		if(discordMember != null) {
+			DiscordDestinyMember member = new DiscordDestinyMember(discordMember, this);
+			Response<?> response = member.loadDestinyEntity();
+			if(!response.success()) {
+				Logger.log(response.toString());
+				return;
+			} 
+			
+			Response<?> charresponse = member.loadDestinyCharacters(member.getEntity().memberUID, member.getEntity().platform);
+			if(!charresponse.success()) {
+				Logger.log(response.toString());
+				return;
+			}
+			
+			for(DiscordDestinyMember lm : loadedMembers) {
+				if(lm.linkedMember().getId().asString().equals(userNode.getName())) {
+					Logger.log("This user is already part of the loaded list!");
+					return;
+				}
+			}
+			
+			loadedMembers.add(member);
+			member.updateRegistration();
+			pluginmgr.triggerOnDestinyMemberUpdate(member);
+			rolemgr.syncMemberRoles();
+		} else {
+			leaveServer(userNode.getName());
+			Logger.err("User with id " + userNode.getName() + " is not a member of this server! Put on on-leave list!");
+		}
 	}
 	
 	private volatile boolean locked = false;
@@ -264,29 +308,7 @@ public class BotClient {
 		Logger.log("Loading " + usersToLoad.size() + " destiny member(s) from database (May take a while)");
 		for(Variable user : usersToLoad.getVariables()) {
 			if(user.isNode()) {
-				Member discordMember = null;
-				try {
-					discordMember = server.getMemberById(Snowflake.of(user.getName())).block();
-				} catch(Exception e) {}
-				if(discordMember != null) {
-					DiscordDestinyMember member = new DiscordDestinyMember(discordMember, this);
-					Response<?> response = member.loadDestinyEntity();
-					if(!response.success()) {
-						Logger.log(response.toString());
-						continue;
-					} 
-					
-					Response<?> charresponse = member.loadDestinyCharacters(member.getEntity().memberUID, member.getEntity().platform);
-					if(!charresponse.success()) {
-						Logger.log(response.toString());
-						continue;
-					}
-					
-					loadedMembers.add(member);
-				} else {
-					leaveServer(user.getName());
-					Logger.err("User with id " + user.getName() + " is not a member of this server! Put on on-leave list!");
-				}
+				loadLinkedMember(user.getAsNode());
 			} else user.delete();
 		}
 		locked = false;
@@ -301,7 +323,7 @@ public class BotClient {
 		}
 		
 		if(loaded == null) {
-			Logger.warn("User with ID " + discordUserId + " not found or is not registered yet!");
+			Logger.warn("User with ID " + discordUserId + " not loaded (as discorddesinyentity) or is not registered yet!");
 			return;
 		}
 		Response<?> response = loaded.loadDestinyEntity();
@@ -468,7 +490,8 @@ public class BotClient {
 		}
 		
 		if(database.get("on-leave").isUnknown()) database.addNode("on-leave");
-		database.get("on-leave").getAsNode().addNumber(userId, (long) ((System.currentTimeMillis() / 1000l) + ACCOUNT_EXPIRE_TIME));
+		if(database.get("on-leave").getAsNode().get(userId).isUnknown()) 
+			database.get("on-leave").getAsNode().addNumber(userId, (long) ((System.currentTimeMillis() / 1000l) + ACCOUNT_EXPIRE_TIME));
 		SimpleDateFormat format = new SimpleDateFormat("HH:mm:ss dd-MM-yyyy");
 		Logger.log("User " + userId + " left the Server. Put on expire list. Data expires at " + format.format(new Date(((long) (System.currentTimeMillis() / 1000l) + ACCOUNT_EXPIRE_TIME) * 1000)) + "+-5 min");
 		database.save();
@@ -567,12 +590,9 @@ public class BotClient {
 	}
 	
 	public boolean isServerMember(String id) {
-		Member member = null;
-		try {
-			member = server.getMemberById(Snowflake.of(id)).block();
-		} catch(Exception e) {
-			member = null;
+		for(Member member : server.getMembers().collectList().block()) {
+			if(member.getId().asString().equals(id)) return true;
 		}
-		return member != null;
+		return false;
 	}
 }

@@ -17,6 +17,7 @@ public interface EntityData {
 	
 	public class DestinyMemberEntity {
 		
+		public JsonObject jsonData;
 		public boolean isPrivate = false;
 		public String memberUID;
 		public MembershipType platform;
@@ -31,6 +32,7 @@ public interface EntityData {
 	
 	public class DestinyCharacterEntity {
 		
+		public JsonObject jsonData;
 		public MembershipType platform;
 		public String memberUID;
 		public String characterID;
@@ -67,6 +69,7 @@ public interface EntityData {
 	
 	public class DestinyActivityDefinitionEntity {
 		
+		public JsonObject jsonData;
 		public long activityHash;
 		public String description = "";
 		public String name = "";
@@ -85,7 +88,13 @@ public interface EntityData {
 	}
 	
 	public class DestinyActivityEntity {
+		public JsonObject jsonData;
 		
+		//Only set if it was pvp
+		public boolean victory = false;
+		
+		public boolean completed;
+		public boolean objectiveCompleted;
 		public long instanceId;
 		public long activityHash;
 		public DestinyActivityDefinitionEntity definition;
@@ -94,12 +103,14 @@ public interface EntityData {
 		public boolean checkpoint;
 		public Date timestamp;
 		public ActivityType mode;
-		//public ActivityType[] modes;
+		public ActivityType[] modes;
 		public MembershipType platform;
 		public boolean isPrivate;
 	}
 	
 	public class PGCREntity {
+		public JsonObject jsonData;
+		
 		public DestinyActivityEntity activity;
 		public PGCRPlayerEntity[] players;
 	}
@@ -119,5 +130,16 @@ public interface EntityData {
 		public int superKills = -1;
 		public int meleeKills = -1;
 		public int abillityKills = -1;
+	}
+	
+	public class StatValue {
+		
+		final float value;
+		final String displayValue;
+		
+		public StatValue(float value, String displayValue) {
+			this.value = value;
+			this.displayValue = displayValue;
+		}
 	}
 }

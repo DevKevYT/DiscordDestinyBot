@@ -95,7 +95,9 @@ public final class Variable {
 	}
 	
 	public void delete() {
-		getParent().remove(getName());
+		if(getParent() != null) {
+			getParent().remove(getName());
+		}
 	}
 	
 	public void setString(String stringValue) {

@@ -194,6 +194,7 @@ public class RoleManager {
 		for(Member serverMembers : client.getServer().getMembers().collectList().block()) {
 			List<Role> has = serverMembers.getRoles().collectList().block();
 			BotRole[] legal = getAquiredTriumphsFromMember(serverMembers.getId().asString());
+			ArrayList<Role> removed = new ArrayList<Role>();
 			
 			for(Role role : has) {
 				boolean remove = false;
@@ -214,13 +215,24 @@ public class RoleManager {
 					}
 				}
 				if(remove) {
-					Logger.log("Removing illegal role for member " + serverMembers.getDisplayName());
+					Logger.log("Removing illegal role for member " + serverMembers.getDisplayName() + ": " + role.getName());
 					serverMembers.removeRole(role.getId()).block();
+					removed.add(role);
 				}
 			}
 			
 			for(BotRole n : legal) {
-				setProgressForMember(serverMembers.getId().asString(), n.progressId, getProgressByIdForMember(serverMembers.getId().asString(), n.progressId));
+				boolean wasRemoved = false;
+				for(Role r : removed) {
+					if(r.getId().asString().equals(n.serverRole.getId().asString())) {
+						wasRemoved = true;
+						break;
+					}
+				}
+				if(!wasRemoved) {
+					//Logger.log("Updating progress for member " + serverMembers.getUsername());
+					setProgressForMember(serverMembers.getId().asString(), n.progressId, getProgressByIdForMember(serverMembers.getId().asString(), n.progressId));
+				}
 			}
 		}
 	}
@@ -455,7 +467,7 @@ public class RoleManager {
 			}
 			
 			triumphs.addNumber(progressId, progressValue);		
-		} else triumphs.addNumber(progressId, 0);
+		} else triumphs.addNumber(progressId, progressValue);
 		
 		Member target = client.getServer().getMemberById(Snowflake.of(memberId)).block();
 		BotRole previous = getRoleByRequirement(progressId, prevProgress);

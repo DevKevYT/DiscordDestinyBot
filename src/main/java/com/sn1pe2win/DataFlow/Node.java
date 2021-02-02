@@ -2,7 +2,9 @@ package com.sn1pe2win.DataFlow;
 
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileWriter;
+import java.io.FileOutputStream;
+import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 
 import com.badlogic.gdx.files.FileHandle;
@@ -78,7 +80,8 @@ public class Node {
 		if(!isMainNode()) return false;
 		
 		try {
-			BufferedWriter writer = new BufferedWriter(new FileWriter(file));
+			OutputStreamWriter osw = new OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8);
+			BufferedWriter writer = new BufferedWriter(osw);
 			writer.write(FileReader.print(this));
 			writer.flush();
 			writer.close();

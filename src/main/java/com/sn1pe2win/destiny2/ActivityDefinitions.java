@@ -32,6 +32,7 @@ public class ActivityDefinitions {
 	
 	private ActivityDefinitions(JsonObject object, long activityHash) {
 		entity = new DestinyActivityDefinitionEntity();
+		entity.jsonData = object;
 		entity.description = object.getAsJsonObject("displayProperties").getAsJsonPrimitive("description").getAsString();
 		entity.name = object.getAsJsonObject("displayProperties").getAsJsonPrimitive("name").getAsString();
 		entity.activityHash = activityHash;

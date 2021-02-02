@@ -17,6 +17,8 @@ public class PostGameCarnageReport {
 	public PostGameCarnageReport(DestinyActivity activity, JsonObject data) {
 		entity = new PGCREntity();
 		entity.activity = activity.getEntity();
+		entity.jsonData = data;
+		
 		JsonArray entries = data.getAsJsonObject("Response").getAsJsonArray("entries");
 		ArrayList<PGCRPlayerEntity> playerEntries = new ArrayList<EntityData.PGCRPlayerEntity>();
 		

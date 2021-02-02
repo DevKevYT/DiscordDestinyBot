@@ -98,6 +98,7 @@ public class DiscordDestinyMember {
 		if(entity == null) entity = new DestinyMemberEntity();
 		entity.memberUID = destinyMemberID;
 		entity.platform = platform;
+		entity.jsonData = profile.getPayload();
 		JsonObject userInfo = profile.getPayload().getAsJsonObject("Response").getAsJsonObject("profile").getAsJsonObject("data").getAsJsonObject("userInfo");
 		entity.isPrivate = !userInfo.getAsJsonPrimitive("isPublic").getAsBoolean();
 		entity.displayName = userInfo.getAsJsonPrimitive("displayName").getAsString();
@@ -129,6 +130,7 @@ public class DiscordDestinyMember {
 			entity.characters[i].parse(characterData);
 			entity.characters[i].memberUID = destinyMemberID;
 			entity.characters[i].platform = platform;
+			entity.characters[i].jsonData = characterData;
 		}
 		charactersLoaded = true;
 		return new Response<EntityData.DestinyMemberEntity>(entity);
@@ -183,7 +185,7 @@ public class DiscordDestinyMember {
 	 * If the limit is higher than the activity list or the limit is 0 ir less, all reported activities are returned*/
 	public Response<DestinyActivity[]> loadActivityHistory(ActivityType type, boolean onlySuccessfull, int limit, ClassType... characters) {
 		//if(!charactersLoaded() || !profileLoaded()) return new Response<DestinyActivity[]>(new DestinyActivity[] {}, 500, "NoCharacterLoaded", "Characters need to get loaded before loading activity stats", 0);
-		
+		if(entity == null) return new Response<DestinyActivity[]>(new DestinyActivity[] {}, 500, "NoEntityLoaded", "The Destiny Profile need to get loaded before loading activity stats", 0);
 		ArrayList<DestinyActivity> history = new ArrayList<DestinyActivity>(10);
 		
 		for(int i = 0; i < entity.characters.length; i++) {

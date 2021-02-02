@@ -10,7 +10,7 @@ public class Main {
 	
 	public static OAuthHandler remoteAuthetification;
 	//Now supporting PGCR's
-	public static final String VERSION = "2.1.4";
+	public static final String VERSION = "2.1.7";
 	private static String[] args;
 	
 	public static void main(String [] args) throws Exception {
@@ -42,7 +42,7 @@ public class Main {
 		
 		BotClient bot = new BotClient(database);
 		bot.build();
-		
+
 		//System.setProperty("bot-running", null);
 	}
 	

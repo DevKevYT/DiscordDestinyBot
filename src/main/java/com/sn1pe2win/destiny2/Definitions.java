@@ -1,7 +1,7 @@
 package com.sn1pe2win.destiny2;
 
-/**Alles zeug, was mit ID's und so assoziert werden muss...
- * Alles auch auf Deutsch übersetzt*/
+/**Static Definitions von Destiny 2. Man könnte sich
+ * auch das Manifest herunterladen. Aber ich komme noch nicht so mit Datenbanken klar*/
 public interface Definitions {
 	
 	public enum Languages {
@@ -104,6 +104,7 @@ public interface Definitions {
 		}
 	}
 	
+	//Destiny.Definitions.DestinyActivityModeDefinition
 	/**https://destinydevs.github.io/BungieNetPlatform/docs/schemas/Destiny-HistoricalStats-Definitions-DestinyActivityModeType*/
 	public enum ActivityType {
 		
@@ -115,6 +116,7 @@ public interface Definitions {
 		CONTROL((short) 10, "Kontrolle"),
 		CLASH((short) 12, "Team Deathmatch"),
 		NIGHTFALL((short) 16, "Dämmerung"),
+		ALL_STRIKES((short) 18, "Strikes"),
 		HEROIC_NIGHTFALL((short) 17, "Heroische Dämmerung"),  //?
 		IRON_BANNER((short) 19, "Eisenbanner"),
 		SUPREMACY((short) 31, "Supremacy"),
@@ -122,15 +124,15 @@ public interface Definitions {
 		COUNTDOWN((short) 38, "Countdown"),
 		TRIAL((short) 39, "Prüfungen der Neun"),
 		SOCIAL((short) 40, "Turm"),
-		TRIALS_COUNTDOWN((short) 41, "Prüfungenvon Oriris: Countdown"),
+		TRIALS_COUNTDOWN((short) 41, "Prüfungen von Oriris: Countdown"),
 		TRIALS_SURVIVAL((short) 42, "Prüfungen von Osiris: Survival"),
 		IRON_BANNER_CONTROL((short) 43, "Eisenbanner Kontrolle"),
 		IRON_BANNER_CLASH((short) 44, "Eisenbanner Team Deathmatch"),
 		IRON_BANNER_SUPREMACY((short) 45, "Einenbanner Supremacy"),
 		ALL_PVE((short) 7, "PvE"),
 		ALLSTRIKES((short) 18, "Strikes"),
-		ALL_PVP((short) 5, "PvP");
-		
+		ALL_PVP((short) 5, "PvP"),
+		TRIALS_OF_OSIRIS((short) 84, "Prüfungen von Osiris");
 		
 		public final short id;
 		public final String readable;

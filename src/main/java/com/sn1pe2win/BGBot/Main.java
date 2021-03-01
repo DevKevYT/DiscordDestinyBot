@@ -9,8 +9,9 @@ import com.sn1pe2win.api.OAuthHandler;
 public class Main {
 	
 	public static OAuthHandler remoteAuthetification;
-	//Now supporting PGCR's
-	public static final String VERSION = "2.1.7";
+	//Resolved an error were the bot suddently did not update anymore without any warning
+	//Bot is now using an external destiny 2 wrapper for more flexibillity and future fixes. This is also making the bot application itself smaller
+	public static final String VERSION = "3.0.0";
 	private static String[] args;
 	
 	public static void main(String [] args) throws Exception {

@@ -1,5 +1,7 @@
 package com.sn1pe2win.api;
 
+import com.sn1pe2win.core.Response;
+
 import discord4j.core.object.entity.Message;
 
 public interface Handshake {

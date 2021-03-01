@@ -13,11 +13,11 @@ import com.google.gson.JsonObject;
 import com.sn1pe2win.BGBot.RoleManager.BotRole;
 import com.sn1pe2win.DataFlow.Node;
 import com.sn1pe2win.DataFlow.Variable;
-import com.sn1pe2win.api.BungieAPI;
 import com.sn1pe2win.api.Handshake;
-import com.sn1pe2win.api.Response;
 import com.sn1pe2win.api.OAuthHandler.StateAuth;
-import com.sn1pe2win.destiny2.Definitions.MembershipType;
+import com.sn1pe2win.core.Gateway;
+import com.sn1pe2win.core.Response;
+import com.sn1pe2win.definitions.MembershipType;
 import com.sn1pe2win.destiny2.DiscordDestinyMember;
 
 import discord4j.common.util.Snowflake;
@@ -101,7 +101,7 @@ public class DefaultCommands extends Library {
 										} else if(rid.equals("796408559541289030")) {
 											chosen = MembershipType.PC;
 										} else if(rid.equals("796409533634707506")) {
-											chosen = MembershipType.STADIS;
+											chosen = MembershipType.STADIA;
 										}
 										break;
 									}
@@ -110,7 +110,7 @@ public class DefaultCommands extends Library {
 								/**Schadet nie den access-token mal zu speichern bzw zu updaten*/
 								userNode.getAsNode().addString("access-token", data.accessToken);
 								
-								Response<JsonObject> response = BungieAPI.sendGet("/User/GetBungieAccount/" + data.bungieMembership + "/-1/");
+								Response<JsonObject> response = Gateway.sendGet("/User/GetBungieAccount/" + data.bungieMembership + "/-1/");
 								if(!response.success()) {
 									MemberLinkedEvent event = new MemberLinkedEvent();
 									event.requestingUser = u;
@@ -120,7 +120,7 @@ public class DefaultCommands extends Library {
 									return new Response<Object>(null, 500, "BotError", "Es ist ein Fehler aufgetreten<br>Sieh nach, was der Bot dir mitgeteilt hat!", 0);
 								}
 								
-								JsonArray destinyMembership = response.getPayload().getAsJsonObject("Response").getAsJsonArray("destinyMemberships");
+								JsonArray destinyMembership = response.getResponseData().getAsJsonObject("Response").getAsJsonArray("destinyMemberships");
 								
 								if(destinyMembership != null) {
 								
@@ -139,7 +139,7 @@ public class DefaultCommands extends Library {
 										byte checkPlatform = destinyMembership.get(i).getAsJsonObject().getAsJsonPrimitive("membershipType").getAsByte();
 										
 										if(checkPlatform == chosen.id || destinyMembership.size() == 1) {
-											Logger.log("Chosen Platform found on " + MembershipType.byId(chosen.id).readable + " !! continuing...");
+											Logger.log("Chosen Platform found on " + MembershipType.of(chosen.id).readable + " !! continuing...");
 											
 											/**Check again in case the platforms are ambigous*/
 											if(destinyMembership.size() == 1 && checkPlatform != chosen.id) {
@@ -147,10 +147,10 @@ public class DefaultCommands extends Library {
 												estimated = true;
 											}
 											
-											chosen = MembershipType.byId(checkPlatform);
+											chosen = MembershipType.of(checkPlatform);
 											JsonObject destinyProfile = destinyMembership.get(i).getAsJsonObject();
 											String did = destinyProfile.getAsJsonPrimitive("membershipId").getAsString();
-											MembershipType crosssaveOverride = MembershipType.byId(destinyProfile.getAsJsonPrimitive("crossSaveOverride").getAsByte());
+											MembershipType crosssaveOverride = MembershipType.of(destinyProfile.getAsJsonPrimitive("crossSaveOverride").getAsByte());
 											
 											if(crosssaveOverride != MembershipType.NONE) {
 												for(int j = 0; j < destinyMembership.size(); j++) {
@@ -170,7 +170,7 @@ public class DefaultCommands extends Library {
 											for(DiscordDestinyMember member : client.loadedMembers) {
 												if(member.linkedMember() != null) {
 													if(member.linkedMember().getId().asString().equals(u.getId().asString())) {
-														if(member.getEntity() != null) {
+														if(member.profileLoaded()) {
 															if(previousID != null) {
 																if(previousID.equals(did)) {
 																	arg1.error("Dieser Account entspricht dem alten Konto und Plattform.\nKeine Änderungen wirksam");
@@ -179,7 +179,7 @@ public class DefaultCommands extends Library {
 															}
 														}
 														
-														if(member.getEntity().memberUID.equals(did)) {
+														if(String.valueOf(member.getProfile().getUserInfo().getMembershipId()).equals(did)) {
 															MemberLinkedEvent event = new MemberLinkedEvent();
 															event.requestingUser = u;
 															event.responseData = data;
@@ -193,7 +193,7 @@ public class DefaultCommands extends Library {
 											}
 											//"test" load the member to check if everything is fine
 											DiscordDestinyMember test = new DiscordDestinyMember(u.asMember(client.getServer().getId()).block(), client);
-											Response<?> tres = test.loadDestinyCharacters(did, chosen);
+											Response<?> tres = test.loadDestinyProfile(Long.valueOf(did), chosen);
 											if(!tres.success()) {
 												MemberLinkedEvent event = new MemberLinkedEvent();
 												event.requestingUser = u;
@@ -203,7 +203,7 @@ public class DefaultCommands extends Library {
 												String available = "";
 												JsonArray applicable = destinyMembership.get(i).getAsJsonObject().getAsJsonArray("applicableMembershipTypes");
 												for(int j = 0; j < applicable.size(); j++) {
-													available += MembershipType.byId(applicable.get(j).getAsJsonPrimitive().getAsByte()) + (j == applicable.size() ? "" : ", ");
+													available += MembershipType.of(applicable.get(j).getAsJsonPrimitive().getAsByte()) + (j == applicable.size() ? "" : ", ");
 												}
 												//Der zweite Fall dürfte hier eigentlich nie eintreten, da bei nur einer möglichen Plattform diese automatisch ausgewählt wird
 												arg1.error("Es gab einen Fehler dein Destiny Konto auf " + chosen.readable + " zu finden.\nSicher dass du auf " + chosen.readable + " spielst?\n"

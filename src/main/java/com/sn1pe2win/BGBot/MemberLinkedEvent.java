@@ -1,7 +1,7 @@
 package com.sn1pe2win.BGBot;
 
 import com.sn1pe2win.api.Handshake.OAuthResponseData;
-import com.sn1pe2win.destiny2.Definitions.MembershipType;
+import com.sn1pe2win.definitions.MembershipType;
 
 import discord4j.core.object.entity.User;
 

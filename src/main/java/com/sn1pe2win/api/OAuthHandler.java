@@ -13,6 +13,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import com.sn1pe2win.BGBot.Logger;
 import com.sn1pe2win.api.Handshake.OAuthResponseData;
+import com.sn1pe2win.core.Gateway;
+import com.sn1pe2win.core.Response;
 
 import discord4j.core.object.entity.Member;
 import discord4j.core.object.entity.Message;
@@ -98,15 +100,15 @@ public class OAuthHandler {
 									@Override
 									public void run() {
 										Logger.log("Found matching state." + state + " with code " + code + " Sending POST");
-					            		Response<JsonObject> response = BungieAPI.sendPOST("/App/oauth/token/",  
+					            		Response<JsonObject> response = Gateway.sendPOST("/App/oauth/token/",  
 							            		"client_id=" + applicationID + 
 							            		"&grant_type=authorization_code" +
 							            		"&code=" + code);
 							    		if(response.containsPayload()) {
-							    			JsonPrimitive membershipId = response.getPayload().getAsJsonPrimitive("membership_id");
-							    			JsonPrimitive access_token = response.getPayload().getAsJsonPrimitive("access_token");
-							    			JsonPrimitive refresh_token = response.getPayload().getAsJsonPrimitive("refresh_token");
-							    			JsonPrimitive expires = response.getPayload().getAsJsonPrimitive("refresh_expires_in");
+							    			JsonPrimitive membershipId = response.getResponseData().getAsJsonPrimitive("membership_id");
+							    			JsonPrimitive access_token = response.getResponseData().getAsJsonPrimitive("access_token");
+							    			JsonPrimitive refresh_token = response.getResponseData().getAsJsonPrimitive("refresh_token");
+							    			JsonPrimitive expires = response.getResponseData().getAsJsonPrimitive("refresh_expires_in");
 							    			
 							    			if(membershipId == null) {
 							    				states.listener.error("POST request ist fehlgeschlagen " + response.toString());

@@ -190,10 +190,10 @@ public class RoleManager {
 		database.save();
 	}
 	
-	public void syncMemberRoles() {
-		for(Member serverMembers : client.getServer().getMembers().collectList().block()) {
-			List<Role> has = serverMembers.getRoles().collectList().block();
-			BotRole[] legal = getAquiredTriumphsFromMember(serverMembers.getId().asString());
+	public void syncMemberRole(Member member) {
+		if(!member.isBot()) {
+			List<Role> has = member.getRoles().collectList().block();
+			BotRole[] legal = getAquiredTriumphsFromMember(member.getId().asString());
 			ArrayList<Role> removed = new ArrayList<Role>();
 			
 			for(Role role : has) {
@@ -215,25 +215,21 @@ public class RoleManager {
 					}
 				}
 				if(remove) {
-					Logger.log("Removing illegal role for member " + serverMembers.getDisplayName() + ": " + role.getName());
-					serverMembers.removeRole(role.getId()).block();
+					Logger.log("Removing illegal role for member " + member.getDisplayName() + ": " + role.getName());
+					member.removeRole(role.getId()).block();
 					removed.add(role);
 				}
 			}
 			
-			for(BotRole n : legal) {
-				boolean wasRemoved = false;
-				for(Role r : removed) {
-					if(r.getId().asString().equals(n.serverRole.getId().asString())) {
-						wasRemoved = true;
-						break;
-					}
-				}
-				if(!wasRemoved) {
-					//Logger.log("Updating progress for member " + serverMembers.getUsername());
-					setProgressForMember(serverMembers.getId().asString(), n.progressId, getProgressByIdForMember(serverMembers.getId().asString(), n.progressId));
-				}
+			for(BotRole n : getAquiredTriumphsFromMember(member.getId().asString())) {
+				setProgressForMember(member.getId().asString(), n.progressId, getProgressByIdForMember(member.getId().asString(), n.progressId));
 			}
+		}
+	}
+	
+	public void syncMemberRoles() {
+		for(Member serverMembers : client.getServer().getMembers().collectList().block()) {
+			syncMemberRole(serverMembers);
 		}
 	}
 	
@@ -286,8 +282,10 @@ public class RoleManager {
 		if(current == null) return 0;
 		//Find the next highest
 		BotRole record = getHighestRequirement(progressId);
-		for(BotRole role : botRoles) {
-			if(role.requirement >= current.requirement && role.requirement < record.requirement && !role.equals(current)) {
+		
+		BotRole[] type = getRolesByProgressId(progressId);
+		for(BotRole role : type) {
+			if(role.requirement >= current.requirement && role.requirement <= record.requirement && !role.equals(current)) {
 				record = role;
 			}
 		}
@@ -366,10 +364,10 @@ public class RoleManager {
 		roleAsNode.addArray(ROLE_COLOR_NAME, color.getRed(), color.getGreen(), color.getBlue());
 		roleAsNode.addString(ROLE_FORCEROLE_NAME, forceRole ? "true" : "false");
 		Role serverRole = null;
-		if(forceRole) serverRole = createRole(client.getServer(), roleAsNode);
-		roleNode.addNode(triumphName, roleAsNode);
+		Node newRef = roleNode.addNode(triumphName, roleAsNode);
+		if(forceRole) serverRole = createRole(client.getServer(), newRef);
 		
-		BotRole newRole = new BotRole(serverRole, requirement, progressId, roleAsNode);
+		BotRole newRole = new BotRole(serverRole, requirement, progressId, newRef);
 		
 		botRoles.add(newRole);
 		database.save();
@@ -438,6 +436,7 @@ public class RoleManager {
 	public boolean setProgressForMember(String memberId, String progressId, int progressValue) {
 		if(!client.isServerMember(memberId)) return false;
 		
+		//Logger.log("Setting/updating progress for member " + memberId);
 		Node userNode = database.get("users").getAsNode().getCreateNode(memberId);
 		Node triumphs = userNode.getCreateNode(TRIUMPH_VARIABLE_NAME);
 		
@@ -477,7 +476,7 @@ public class RoleManager {
 					if(previous.serverRole != null) {
 						if(roleExists(previous.serverRole.getId())) target.removeRole(previous.serverRole.getId()).block();
 					}
-					target.addRole(current.serverRole.getId()).subscribe();
+					target.addRole(current.serverRole.getId()).block();
 				}
 				MemberTriumphEvent event = new MemberTriumphEvent();
 				event.current = current;
@@ -487,17 +486,17 @@ public class RoleManager {
 				client.pluginmgr.triggerOnMemberTriumph(event);
 				return true;
 			} else if(current.requirement == previous.requirement) {
-				if(forceRole) target.addRole(current.serverRole.getId()).subscribe();
+				if(forceRole) target.addRole(current.serverRole.getId()).block();
 				return false;
 			} else if(current.requirement < previous.requirement) {
-				if(forceRole) target.addRole(current.serverRole.getId()).subscribe();
+				if(forceRole) target.addRole(current.serverRole.getId()).block();
 				if(previous.serverRole != null) {
-					if(roleExists(previous.serverRole.getId())) target.removeRole(previous.serverRole.getId()).subscribe();
+					if(roleExists(previous.serverRole.getId())) target.removeRole(previous.serverRole.getId()).block();
 				}
 				return false;
 			}
 		} else if(current != null && previous == null) {
-			if(forceRole) target.addRole(current.serverRole.getId()).subscribe();
+			if(forceRole) target.addRole(current.serverRole.getId()).block();
 			MemberTriumphEvent event = new MemberTriumphEvent();
 			event.current = current;
 			event.previous = previous;
@@ -507,12 +506,11 @@ public class RoleManager {
 			return true;
 		} else if(current == null && previous != null) {
 			if(previous.serverRole != null) {
-				if(roleExists(previous.serverRole.getId())) target.removeRole(previous.serverRole.getId()).subscribe();
+				if(roleExists(previous.serverRole.getId())) target.removeRole(previous.serverRole.getId()).block();
 			}
 			return false;
 		}
 		
-		syncMemberRoles();
 		return false;
 	}
 	
@@ -528,13 +526,14 @@ public class RoleManager {
 				return triumph.getAsInt();
 			}
 		}
+		//Logger.warn("User  " + memberId + " did not obtain this triumph yet... Returning 0");
 		return 0;
 	}
 	
 	public BotRole[] getAquiredTriumphsFromMember(String memberId) {
 		if(!client.isServerMember(memberId)) return new BotRole[] {};
 		
-		Node userNode = database.get("users").getAsNode().getCreateNode(memberId);
+		Node userNode = database.getCreateNode("users").getCreateNode(memberId);
 		Node triumphs = userNode.getCreateNode(TRIUMPH_VARIABLE_NAME);
 		
 		ArrayList<BotRole> aquired = new ArrayList<>();

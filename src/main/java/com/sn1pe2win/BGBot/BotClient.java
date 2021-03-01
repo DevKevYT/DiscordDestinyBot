@@ -14,9 +14,9 @@ import com.devkev.devscript.raw.Output;
 import com.devkev.devscript.raw.Process;
 import com.sn1pe2win.DataFlow.Node;
 import com.sn1pe2win.DataFlow.Variable;
-import com.sn1pe2win.api.BungieAPI;
-import com.sn1pe2win.api.Response;
-import com.sn1pe2win.destiny2.Definitions.MembershipType;
+import com.sn1pe2win.core.Gateway;
+import com.sn1pe2win.core.Response;
+import com.sn1pe2win.definitions.MembershipType;
 import com.sn1pe2win.destiny2.DiscordDestinyMember;
 
 import discord4j.common.util.Snowflake;
@@ -68,7 +68,7 @@ public class BotClient {
 		Variable bungieToken = database.get("destiny-api-key");
 		if(bungieToken.isUnknown() || !bungieToken.isString()) 
 			Logger.warn("Variable destiny-api-key not found in the database. Bot wont be able to handle destiny API requests");
-		else BungieAPI.X_API_KEY = bungieToken.getAsString();
+		else Gateway.X_API_KEY = bungieToken.getAsString();
 		
 		this.database = database;
 		botClient = DiscordClientBuilder.create(token.getAsString()).build().login().block();
@@ -172,7 +172,7 @@ public class BotClient {
 		}
 		
 		loadLinkedMembers();
-		Logger.log("Done");
+		Logger.log("Bot Ready");
 		
 		botClient.on(MemberLeaveEvent.class).subscribe(event -> {
 			if(event.getGuildId().asString().equals(server.getId().asString())) {
@@ -189,6 +189,7 @@ public class BotClient {
 				
 				pluginmgr.triggerOnMemberJoinEvent(event);
 				
+				rolemgr.syncMemberRole(event.getMember());
 				if(database.get("on-leave").isUnknown()) database.addNode("on-leave");
 				database.get("on-leave").getAsNode().remove(event.getMember().getId().asString());
 				
@@ -230,36 +231,53 @@ public class BotClient {
 		
 		ready = true;
 		
-		new Thread(new Runnable() {
+		Logger.log("Creating updater...");
+		createUpdater();
+		
+	
+		botClient.onDisconnect().block();
+	}
+	
+	private volatile boolean running = false;
+	
+	private Thread createUpdater() throws IllegalAccessError {
+		if(running) throw new IllegalAccessError("The updater is still alive and it is not allowed to create multiple updaters");
+		Thread t = new Thread(new Runnable() {
 			@Override
 			public void run() {
 				while(true) {
-					synchronized (this) {
-						long leftFromDefaultUpdateDelay = 5 * 60000;
-						long start = System.currentTimeMillis();
-						try {
-							update();
-							System.gc();
-						} catch(Exception e) {
-							Logger.err("Error in thread Profile Scheduler " + e.getLocalizedMessage());
-							e.printStackTrace();
+					try {
+						synchronized (this) {
+							long leftFromDefaultUpdateDelay = 5 * 60000;
+							long start = System.currentTimeMillis();
+							try {
+								update();
+								System.gc();
+							} catch(Exception e) {
+								Logger.err("Error in thread Profile Scheduler " + e.getLocalizedMessage());
+								e.printStackTrace();
+							}
+							leftFromDefaultUpdateDelay = leftFromDefaultUpdateDelay - (System.currentTimeMillis() - start);
+							try {
+								wait(leftFromDefaultUpdateDelay < 0 ? 1 : leftFromDefaultUpdateDelay);
+							} catch (InterruptedException e) {
+								Logger.err("FATAL Scheduler failed to pause the thread. Attempting to restart...");
+								running = false;
+								createUpdater();
+							}
 						}
-						leftFromDefaultUpdateDelay = leftFromDefaultUpdateDelay - (System.currentTimeMillis() - start);
-						try {
-							wait(leftFromDefaultUpdateDelay < 0 ? 0 : leftFromDefaultUpdateDelay);
-						} catch (InterruptedException e) {
-							Logger.err("FATAL Scheduler failed to pause the thread. Aborting\nPlease restart the Bot for proper functioning!");
-							System.exit(-1);
-						}
+					} catch(Throwable e) {
+						Logger.err("Critical error in updater: " + e.getMessage() + " Attempting to restart...");
+						e.printStackTrace();
+						running = false;
+						createUpdater();
 					}
 				}
 			}
-		}, "Profile Updater").start();
-		
-		//Logger.log("Debug: create role from code");
-		//Node role = new Node();
-		//rolemgr.createRole(server, "test", role);
-		botClient.onDisconnect().block();
+		}, "Profile Updater");
+		t.start();
+		running = true;
+		return t;
 	}
 	
 	private void loadLinkedMember(Node userNode) {
@@ -275,7 +293,7 @@ public class BotClient {
 				return;
 			} 
 			
-			Response<?> charresponse = member.loadDestinyCharacters(member.getEntity().memberUID, member.getEntity().platform);
+			Response<?> charresponse = member.loadDestinyCharacters();
 			if(!charresponse.success()) {
 				Logger.log(response.toString());
 				return;
@@ -290,8 +308,7 @@ public class BotClient {
 			
 			loadedMembers.add(member);
 			member.updateRegistration();
-			pluginmgr.triggerOnDestinyMemberUpdate(member);
-			rolemgr.syncMemberRoles();
+			//pluginmgr.triggerOnDestinyMemberUpdate(member);
 		} else {
 			leaveServer(userNode.getName());
 			Logger.err("User with id " + userNode.getName() + " is not a member of this server! Put on on-leave list!");
@@ -306,11 +323,17 @@ public class BotClient {
 		
 		Node usersToLoad = database.getCreateNode("users");
 		Logger.log("Loading " + usersToLoad.size() + " destiny member(s) from database (May take a while)");
+		Logger.log("0%");
+		int currentStep = 0;
 		for(Variable user : usersToLoad.getVariables()) {
 			if(user.isNode()) {
 				loadLinkedMember(user.getAsNode());
+				currentStep++;
+				int percentage = (int) (((float) currentStep / (float) usersToLoad.size()) * 100);
+				if(currentStep % ((int) (usersToLoad.size() / 6) + 1) == 0) Logger.log((int) percentage + "%");
 			} else user.delete();
 		}
+		Logger.log("100%");
 		locked = false;
 	}
 	
@@ -331,7 +354,7 @@ public class BotClient {
 			Logger.log(response.toString());
 		}
 
-		Response<?> charresponse = loaded.loadDestinyCharacters(loaded.getEntity().memberUID, loaded.getEntity().platform);
+		Response<?> charresponse = loaded.loadDestinyCharacters();
 		if(!charresponse.success()) {
 			Logger.log(response.toString());
 		}
@@ -377,7 +400,7 @@ public class BotClient {
 				continue;
 			}
 			if(!updateLocked) return;
-			Response<?> charresponse = loaded.loadDestinyCharacters(loaded.getEntity().memberUID, loaded.getEntity().platform);
+			Response<?> charresponse = loaded.loadDestinyCharacters();
 			if(!charresponse.success()) {
 				Logger.log(response.toString());
 				continue;
